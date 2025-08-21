@@ -26,12 +26,17 @@ class Mouth(pygame.sprite.Sprite):
     def update(self, dt: float, keys: pygame.key.ScancodeWrapper):
         # Horizontal: snappy, direct ship-like movement on X
         pos = pygame.Vector2(self.rect.center)
-        vx = (keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]) * MOUTH_SPEED_X
+        # Allow both Arrow keys and WASD
+        right = 1 if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) else 0
+        left = 1 if (keys[pygame.K_LEFT] or keys[pygame.K_a]) else 0
+        vx = (right - left) * MOUTH_SPEED_X
         pos.x += vx * dt
         pos.x = max(self.rect.width//2, min(WIDTH - self.rect.width//2, pos.x))
 
         # Vertical: target Y moves by keys, mouth springs toward it
-        tdy = (keys[pygame.K_DOWN] - keys[pygame.K_UP]) * MOUTH_SPEED * dt
+        down = 1 if (keys[pygame.K_DOWN] or keys[pygame.K_s]) else 0
+        up = 1 if (keys[pygame.K_UP] or keys[pygame.K_w]) else 0
+        tdy = (down - up) * MOUTH_SPEED * dt
         self.target.y = max(self.rect.height//2, min(HEIGHT - self.rect.height//2, self.target.y + tdy))
         self.target.x = pos.x  # spring acts only on Y
 
