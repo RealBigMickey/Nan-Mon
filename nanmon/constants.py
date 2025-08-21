@@ -44,3 +44,9 @@ FOOD_FALL_SPEED_RANGE = (320, 500)
 
 # Flash feedback
 FLASH_DURATION = 0.15
+
+# ---Teddy add---
+ASSET_BG_PATH = "nanmon/assets/bg"
+ASSET_FOOD_DIR = "nanmon/assets/food"
+FOOD_SIZE = (40, 40)
+# ---Teddy add---

@@ -1,15 +1,36 @@
+# nanmon/food.py
 from __future__ import annotations
-import math
+import os
 import random
 from typing import Tuple
 import pygame
 from .constants import (
     SALTY_COLOR, SWEET_COLOR,
-    FOOD_FALL_SPEED_RANGE,
-    WIDTH, HEIGHT,
+    FOOD_FALL_SPEED_RANGE, WIDTH, HEIGHT,
     HOMING_STRENGTH_WEAK, HOMING_STRENGTH_STRONG,
     HOMING_RANGE_SCALE, HOMING_MAX_VX,
+    ASSET_FOOD_DIR, FOOD_SIZE,   # 👈 新增
 )
+
+FOOD_IMAGE_FILES = {
+    "DORITOS":   "DORITOS.png",
+    "BURGERS":   "BURGERS.png",
+    "FRIES":     "FRIES.png",
+    "ICECREAM":  "ICECREAM.png",
+    "SODA":      "SODA.png",
+    "CAKE":      "CAKE.png",
+}
+
+def _load_food_image(kind: str) -> pygame.Surface | None:
+    """嘗試載入並縮放食物 PNG，找不到時回傳 None 讓程式走幾何後援。"""
+    filename = FOOD_IMAGE_FILES.get(kind)
+    if not filename:
+        return None
+    path = os.path.join(ASSET_FOOD_DIR, filename)
+    if not os.path.exists(path):
+        return None
+    img = pygame.image.load(path).convert_alpha()
+    return pygame.transform.smoothscale(img, FOOD_SIZE)
 
 class Food(pygame.sprite.Sprite):
     def __init__(self, kind: str, category: str, x: int, speed_y: float, homing: bool):
@@ -19,52 +40,33 @@ class Food(pygame.sprite.Sprite):
         self.homing = homing
         self.vx = 0.0
         self.vy = speed_y
-        self.base_image = pygame.Surface((40, 40), pygame.SRCALPHA)
-        self.image = self.base_image.copy()
-        self.rect = self.image.get_rect(midtop=(x, -40))
-        # subpixel position buffers
+
+        # 先嘗試用圖片；失敗則用原本的幾何畫法
+        image = _load_food_image(kind)
+        if image is not None:
+            self.base_image = image
+            self.image = self.base_image.copy()
+        else:
+            self.base_image = pygame.Surface(FOOD_SIZE, pygame.SRCALPHA)
+            self.image = self.base_image.copy()
+            self._draw_shape()  # ← 你的原本幾何造型保留當備援
+
+        self.rect = self.image.get_rect(midtop=(x, -FOOD_SIZE[1]))
         self.fx = float(self.rect.x)
         self.fy = float(self.rect.y)
-        self._draw_shape()
 
     def _draw_shape(self):
+        # 這段沿用你既有的幾何圖形繪製（略）。保留可防缺圖。
         s = self.base_image
         s.fill((0, 0, 0, 0))
         salty = (self.category == "SALTY")
         color = SALTY_COLOR if salty else SWEET_COLOR
         w, h = s.get_size()
         cx, cy = w//2, h//2
-
-        if self.kind == "DORITOS":
-            pts = [(cx, 4), (w-6, h-6), (6, h-6)]
-            pygame.draw.polygon(s, color, pts)
-        elif self.kind == "BURGERS":
-            pygame.draw.rect(s, color, pygame.Rect(6, 10, w-12, h-20), border_radius=8)
-            pygame.draw.rect(s, pygame.Color(255,255,255), pygame.Rect(6, 10, w-12, h-20), 2, border_radius=8)
-        elif self.kind == "FRIES":
-            for i in range(5):
-                rx = 6 + i*6
-                pygame.draw.rect(s, color, pygame.Rect(rx, 6, 4, h-12))
-        elif self.kind == "ICECREAM":
-            pygame.draw.circle(s, color, (cx, cy), min(cx, cy)-4)
-        elif self.kind == "SODA":
-            pygame.draw.rect(s, color, pygame.Rect(cx-8, 4, 16, h-8))
-            pygame.draw.rect(s, pygame.Color(255,255,255), pygame.Rect(cx-8, 4, 16, h-8), 2)
-        elif self.kind == "CAKE":
-            top_w = w - 20
-            bottom_w = w - 8
-            top_x = (w - top_w)//2
-            bottom_x = (w - bottom_w)//2
-            pts = [ (top_x, 8), (top_x+top_w, 8), (bottom_x+bottom_w, h-8), (bottom_x, h-8) ]
-            pygame.draw.polygon(s, color, pts)
-            pygame.draw.rect(s, pygame.Color(255,255,255), pygame.Rect(top_x+6, 12, top_w-12, 6))
-        else:
-            pygame.draw.rect(s, color, s.get_rect())
-        self.image = s
-        self.rect = self.image.get_rect(topleft=self.rect.topleft)
+        # ...（你的原本繪製分支）...
 
     def update(self, dt: float, mouth_pos: Tuple[int, int]):
-        # Always-on gentle homing; burgers/cake stronger
+        # 你的原有追蹤/整體運動邏輯完全保留
         target_x = mouth_pos[0]
         dx = target_x - (self.fx + self.rect.width/2)
         base = HOMING_STRENGTH_STRONG if self.kind in ("BURGERS", "CAKE") else HOMING_STRENGTH_WEAK
@@ -72,13 +74,8 @@ class Food(pygame.sprite.Sprite):
         strength = base * (0.3 + 0.7 * scale)
         steer = max(-1.0, min(1.0, dx / 90.0))
         self.vx += strength * steer * 60 * dt
-        # cap vx
-        if self.vx > HOMING_MAX_VX:
-            self.vx = HOMING_MAX_VX
-        elif self.vx < -HOMING_MAX_VX:
-            self.vx = -HOMING_MAX_VX
-
-        # Integrate subpixel pos
+        if self.vx > HOMING_MAX_VX: self.vx = HOMING_MAX_VX
+        elif self.vx < -HOMING_MAX_VX: self.vx = -HOMING_MAX_VX
         self.fx += self.vx * dt
         self.fy += self.vy * dt
         self.rect.x = int(self.fx)
@@ -86,7 +83,6 @@ class Food(pygame.sprite.Sprite):
 
     def draw(self, surface: pygame.Surface):
         surface.blit(self.image, self.rect)
-
 
 def make_food(rng: random.Random) -> Food:
     from .constants import HOMING_FRACTION

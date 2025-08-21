@@ -9,7 +9,11 @@ from .food import Food, make_food
 from .models import EatenCounters
 from .neck import draw_neck
 from .hud import draw_hud
-
+#--Teddy add start--
+from .init_menu import InitMenu 
+from .background import ScrollingBackground 
+from .constants import ASSET_FOOD_DIR,ASSET_BG_PATH 
+#--Teddy add end--
 
 def run_game(headless_seconds: float | None = None):
     rng = random.Random(RNG_SEED)
@@ -26,6 +30,29 @@ def run_game(headless_seconds: float | None = None):
     pygame.display.set_caption("道地南蠻 — Salty/Sweet")
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 18)
+# --- Teddy add start---
+     # --- 開始畫面（headless 模式會略過） ---
+    if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面:contentReference[oaicite:3]{index=3}
+        init_menu = InitMenu(
+            image_path_1="nanmon/assets/init_menu_1.jpg",
+            image_path_2="nanmon/assets/init_menu_2.jpg",
+            anim_fps=2.0,  # 每秒 2 張
+        )
+        start = init_menu.loop(screen, clock)
+        if not start:
+            pygame.quit()
+            return  # 使用者按 ESC 或關閉視窗
+        
+    # ---- 背景：兩張圖上下滾動並交替 ----
+    bg = ScrollingBackground(
+        image_paths=[
+            os.path.join(ASSET_BG_PATH, "game_bg1.png"),
+        os.path.join(ASSET_BG_PATH, "game_bg2.png"),
+        ],
+        canvas_size=(WIDTH, HEIGHT),
+        speed_y=40.0,   # 想更快/更慢可調整
+    )
+# --- Teddy add end ---
 
     mouth = Mouth((WIDTH//2, HEIGHT - 140))
     foods = pygame.sprite.Group()
@@ -46,6 +73,7 @@ def run_game(headless_seconds: float | None = None):
     elapsed = 0.0
     while running:
         dt = clock.tick(FPS) / 1000.0
+        bg.update(dt) #Teddy add
         elapsed += dt
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -93,8 +121,11 @@ def run_game(headless_seconds: float | None = None):
                 level_cleared = True
             if nausea >= NAUSEA_MAX:
                 game_over = True
+# --- Teddy add start---
+        # 先畫背景，再畫脖子/食物/嘴巴/HUD
+        bg.draw(screen, BG_COLOR)
+# --- Teddy add end---
 
-        screen.fill(BG_COLOR)
         draw_neck(screen, mouth.rect, elapsed)
         for f in foods:
             f.draw(screen)
