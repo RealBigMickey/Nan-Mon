@@ -8,6 +8,7 @@ from .constants import (
     LEVEL_TARGET_SCORE, SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX,
     MAX_ONSCREEN_FOOD, NAUSEA_MAX, NAUSEA_WRONG_EAT, NAUSEA_DECAY_PER_SEC,
     BOSS_SPAWN_TIME, BOSS_HIT_DAMAGE,
+    BOSS_HIT_DAMAGE_BY_KIND,
 )
 from .mouth import Mouth
 from .food import Food, make_food
@@ -93,6 +94,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     player_invincible = False
     elapsed = 0.0
     contact_push_cd = 0.0  # cooldown to avoid continuous boss-contact pushback
+    boss_contact_prev = False  # track edge of collision with boss body
     while running:
         dt = clock.tick(FPS) / 1000.0
         bg.update(dt) #Teddy add
@@ -143,7 +145,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             # Update boss and its projectiles
             if boss is not None:
                 was_dead = boss.dead
-                boss.update(dt)
+                boss.update(dt, player_pos=mouth.rect.center)
                 # Become invincible once boss starts dying
                 if getattr(boss, 'dying', False):
                     player_invincible = True
@@ -155,7 +157,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         if match:
                             mouth.bite()  # Show bite animation for boss foods
                         if not player_invincible and not match:
-                            nausea = min(NAUSEA_MAX, nausea + BOSS_HIT_DAMAGE)
+                            dmg = BOSS_HIT_DAMAGE_BY_KIND.get(getattr(proj, "kind", ""), BOSS_HIT_DAMAGE)
+                            nausea = min(NAUSEA_MAX, nausea + dmg)
                         boss.projectiles.remove(proj)
                 # Impact when boss just finished dying
                 if (not was_dead) and boss.dead:
@@ -175,24 +178,22 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         if mouth.circle_hit(t_center, radius=int(t_radius * 0.35)):
                             mouth.bite()
                             boss.register_bite()
-                            player_invincible = True
                             # Apply strong force-based knockback to player instead of teleport
-                            mouth.knockback(strength=7200.0)
+                            mouth.knockback(strength=12000.0)
 
                 # Light pushback when touching the boss body (makes reaching target trickier)
-                if (
+                boss_contact_now = (
                     boss is not None
                     and boss.active
                     and not getattr(boss, 'spawning', False)
                     and not getattr(boss, 'dying', False)
                     and not boss.dead
-                    and contact_push_cd <= 0.0
-                    and not player_invincible
                     and mouth.rect.colliderect(boss.rect)
-                ):
-                    # Gentle knockback compared to weak-point hit
-                    mouth.knockback(strength=2400.0)
-                    contact_push_cd = 0.35
+                )
+                if boss_contact_now and not boss_contact_prev and contact_push_cd <= 0.0 and not player_invincible:
+                    # Light pushback on first contact with a long cooldown
+                    mouth.knockback(strength=1200.0)
+                    contact_push_cd = 2.0
 
             for f in list(foods):
                 if mouth.rect.colliderect(f.rect):
@@ -213,8 +214,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                                 if mouth.circle_hit(t_center, radius=int(t_radius * 0.4)):
                                     mouth.bite()
                                     boss.register_bite()
-                                    player_invincible = True
-                                    mouth.knockback(strength=7200.0)
+                                    mouth.knockback(strength=9000.0)
                     else:
                         if not player_invincible:
                             nausea = min(NAUSEA_MAX, nausea + NAUSEA_WRONG_EAT)
@@ -267,6 +267,9 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             progress.draw(frame)
 
         dm.present()
+
+        # Track boss contact edge for next frame
+        boss_contact_prev = boss_contact_now if 'boss_contact_now' in locals() else False
 
         if headless_seconds is not None and elapsed >= headless_seconds:
             running = False

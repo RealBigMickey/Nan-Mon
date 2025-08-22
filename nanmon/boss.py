@@ -27,6 +27,10 @@ from .constants import (
     TARGET_RESPAWN_BASE,
     TARGET_RESPAWN_AFTER_BITE,
     BOSS_SPAWN_DURATION,
+    BOSS_BEAM_INTERVAL,
+    BOSS_BEAM_DURATION,
+    BOSS_BEAM_RATE,
+    BOSS_BEAM_SPEED,
 )
 from .food import Food
 from .target import Target
@@ -70,13 +74,22 @@ class Boss(pygame.sprite.Sprite):
         self.dead = False
         self.hit_flash = 0.0
         self.pause_timer = 0.0
+
+        # Beam attack state
+        self.beam_cd = 0.0
+        self.beam_timer = 0.0
+        self.beam_kind = None  # "DORITOS" or "SODA"
+        self.beam_emit_accum = 0.0
+
         # death animation
         self.dying = False
         self.death_timer = 0.0
         self._smoke_cd = 0.0
         self._smoke = []
+        # continuous fume while alive scales with damage
+        self.fume_cd = 0.0
 
-    def update(self, dt: float):
+    def update(self, dt: float, player_pos: tuple[int, int] | None = None):
         # Handle spawn animation: slide in from top and fade in
         if self.spawning:
             self.spawn_timer -= dt
@@ -151,6 +164,31 @@ class Boss(pygame.sprite.Sprite):
         elif self.rect.bottom > BOSS_Y_BOTTOM:
             self.rect.bottom = BOSS_Y_BOTTOM
             self.vy = -abs(self.vy)
+
+        # Update existing smoke puffs even while alive
+        for s in list(self._smoke):
+            s.update(dt)
+            if not s.alive:
+                self._smoke.remove(s)
+
+        # Emit fume that ramps up as boss takes hits
+        damage_ratio = min(1.0, self.bites / max(1, BOSS_BITES_TO_KILL))
+        fume_interval = max(0.18, 1.2 - 0.9 * damage_ratio)
+        self.fume_cd -= dt
+        if self.fume_cd <= 0.0 and not self.dying and self.active:
+            # Spawn a small puff from the top area
+            fx = self.rect.centerx + random.randint(-self.rect.width // 5, self.rect.width // 5)
+            fy = self.rect.top + random.randint(0, 20)
+            self._smoke.append(Smoke((fx, fy)))
+            # Faster as damage increases
+            self.fume_cd = fume_interval
+
+        # Scale attack cadence based on remaining health:
+        # start quite long at full health, shorten as damage accumulates
+        health_ratio = max(0.0, 1.0 - (self.bites / max(1, BOSS_BITES_TO_KILL)))
+        ring_interval = max(1.8, BOSS_RING_INTERVAL * (0.6 + 0.9 * health_ratio))
+        beam_interval = max(2.5, BOSS_BEAM_INTERVAL * (0.7 + 1.0 * health_ratio))
+
         # Rings: sequential pair
         self.ring_cd -= dt
         if self._second_ring_pending is not None:
@@ -166,12 +204,45 @@ class Boss(pygame.sprite.Sprite):
             second = "SWEET" if first == "SALTY" else "SALTY"
             self.spawn_ring(first)
             self._second_ring_pending = (second, BOSS_RING_PAIR_GAP)
-            self.ring_cd = BOSS_RING_INTERVAL
+            self.ring_cd = ring_interval
+
         # Downward burst
         self.shoot_cd -= dt
         if self.shoot_cd <= 0.0:
             self.shoot_food_burst()
             self.shoot_cd = BOSS_SHOT_INTERVAL
+
+        # Beam attack: sustained stream of one kind towards player (all Doritos or all Soda)
+        self.beam_cd -= dt
+        if self.beam_timer > 0.0:
+            self.beam_timer = max(0.0, self.beam_timer - dt)
+            # Emit foods at a steady rate
+            self.beam_emit_accum += BOSS_BEAM_RATE * dt
+            while self.beam_emit_accum >= 1.0:
+                self.beam_emit_accum -= 1.0
+                kind = self.beam_kind or random.choice(["DORITOS", "SODA"])
+                category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
+                # Aim horizontally at player if provided
+                px = player_pos[0] if player_pos is not None else self.rect.centerx
+                x = px
+                f = Food(
+                    kind,
+                    category,
+                    x,
+                    speed_y=BOSS_BEAM_SPEED,
+                    homing=False,
+                    spawn_center_y=self.rect.bottom,
+                )
+                # small spread
+                f.vx = random.uniform(-50, 50)
+                self.projectiles.add(f)
+        elif self.beam_cd <= 0.0:
+            # Start a new beam
+            self.beam_kind = random.choice(["DORITOS", "SODA"])  # all same kind
+            self.beam_timer = BOSS_BEAM_DURATION
+            self.beam_emit_accum = 0.0
+            self.beam_cd = beam_interval
+
         # Update projectiles
         for f in list(self.projectiles):
             f.update(dt, (self.rect.centerx, self.rect.bottom))
@@ -181,6 +252,7 @@ class Boss(pygame.sprite.Sprite):
                 or f.rect.left > WIDTH + 80
             ):
                 self.projectiles.remove(f)
+
         # Manage weak point target
         if self.target is None:
             self.target_cd -= dt
@@ -212,6 +284,7 @@ class Boss(pygame.sprite.Sprite):
         cx, cy = self.rect.center
         n = BOSS_RING_PROJECTILES
         speed = 260.0
+        # Rings contain random foods of the same category
         kinds = (
             "DORITOS",
             "FRIES",
@@ -233,8 +306,8 @@ class Boss(pygame.sprite.Sprite):
     def register_bite(self):
         self.bites += 1
         self.hit_flash = BOSS_HIT_FLASH_TIME
-        self.pause_timer = 1.0  # Pause attacks for 1 second
-        # Clear current target and use a shorter respawn
+        self.pause_timer = 1.8  # Pause attacks longer after a weak-point bite
+        # Clear current target and use a longer respawn
         if self.target is not None:
             self.target.alive = False
             self.target = None
@@ -249,14 +322,19 @@ class Boss(pygame.sprite.Sprite):
         if self.dead:
             return
         draw_rect = self.rect.copy()
+        # Progressive jitter/red tint as health drops
+        bites = min(self.bites, BOSS_BITES_TO_KILL)
+        health_ratio = max(0.0, 1.0 - (bites / max(1, BOSS_BITES_TO_KILL)))
+        base_jitter = int((1.0 - health_ratio) * 3)
         if self.hit_flash > 0:
-            jitter = 3
+            jitter = base_jitter + 2
             draw_rect.x += random.randint(-jitter, jitter)
             draw_rect.y += random.randint(-jitter, jitter)
         if self.dying:
             jitter = 8
             draw_rect.x += random.randint(-jitter, jitter)
             draw_rect.y += random.randint(-jitter, jitter)
+
         # Base sprite (fade-in during spawn)
         if getattr(self, 'spawning', False):
             # Compute alpha based on progress
@@ -267,20 +345,34 @@ class Boss(pygame.sprite.Sprite):
             img.set_alpha(int(255 * t))
             surface.blit(img, draw_rect)
         else:
+            # Apply subtle baseline vibration that increases with damage
+            if bites > 0 and not self.dying:
+                vib = int((1.0 - health_ratio) * 2)
+                if vib > 0:
+                    draw_rect.x += random.randint(-vib, vib)
+                    draw_rect.y += random.randint(-vib, vib)
             surface.blit(self.image, draw_rect)
-        if self.hit_flash > 0 or self.dying:
-            overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
-            # while dying, blend to white as timer runs out
+
+        # Red tint overlay masked to non-transparent pixels only
+        if self.hit_flash > 0 or self.dying or bites > 0:
             if self.dying:
+                # While dying, intensify red instead of whitening
                 t = max(0.0, min(1.0, 1.0 - (self.death_timer / 2.2)))
-                red = 60 + int(195 * t)
-                g = 60 + int(195 * t)
-                b = 60 + int(195 * t)
-                a = 120
-                overlay.fill((red, g, b, a))
+                tint = (150 + int(90 * t), 40, 40)
+                alpha = 140
             else:
-                overlay.fill((255, 60, 60, 120))
-            surface.blit(overlay, draw_rect)
+                t = 1.0 - health_ratio
+                # Stronger red with more damage; slight boost during brief hit_flash
+                r_boost = 30 if self.hit_flash > 0 else 0
+                tint = (min(255, 80 + int(150 * t) + r_boost), 40, 40)
+                alpha = 70 + int(90 * t)
+            if alpha > 0:
+                overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
+                overlay.fill((*tint, alpha))
+                tinted = self.image.copy()
+                tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+                surface.blit(tinted, draw_rect)
+
         # smoke on top of boss sprite
         for s in self._smoke:
             s.draw(surface)
