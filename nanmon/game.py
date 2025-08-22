@@ -3,12 +3,19 @@ import os
 import random
 import math
 import pygame
-from .constants import WIDTH, HEIGHT, FPS, RNG_SEED, BG_COLOR, WHITE, LEVEL_TARGET_SCORE, SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX, MAX_ONSCREEN_FOOD, NAUSEA_MAX, NAUSEA_WRONG_EAT, NAUSEA_DECAY_PER_SEC
+from .constants import (
+    WIDTH, HEIGHT, FPS, RNG_SEED, BG_COLOR, WHITE,
+    LEVEL_TARGET_SCORE, SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX,
+    MAX_ONSCREEN_FOOD, NAUSEA_MAX, NAUSEA_WRONG_EAT, NAUSEA_DECAY_PER_SEC,
+    BOSS_SPAWN_TIME, BOSS_HIT_DAMAGE,
+)
 from .mouth import Mouth
 from .food import Food, make_food
 from .models import EatenCounters
 from .neck import draw_neck
 from .hud import draw_hud
+from .progress import Progress
+from .boss import Boss
 #--Teddy add start--
 from .init_menu import InitMenu 
 from .background import ScrollingBackground 
@@ -56,6 +63,8 @@ def run_game(headless_seconds: float | None = None):
 
     mouth = Mouth((WIDTH//2, HEIGHT - 140))
     foods = pygame.sprite.Group()
+    boss: Boss | None = None
+    progress = Progress(BOSS_SPAWN_TIME)
 
     eaten = EatenCounters()
     score = 0
@@ -94,16 +103,42 @@ def run_game(headless_seconds: float | None = None):
             if nausea > 0:
                 nausea = max(0.0, nausea - NAUSEA_DECAY_PER_SEC * dt)
 
-            spawn_timer += dt
-            if spawn_timer >= next_spawn and len(foods) < MAX_ONSCREEN_FOOD:
-                foods.add(make_food(rng))
-                spawn_timer = 0.0
-                next_spawn = rng.uniform(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
+            # Standard spawns nearly zero during boss
+            if boss is None:
+                spawn_timer += dt
+                if spawn_timer >= next_spawn and len(foods) < MAX_ONSCREEN_FOOD:
+                    foods.add(make_food(rng))
+                    spawn_timer = 0.0
+                    next_spawn = rng.uniform(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
 
+            # Spawn boss when progress ready
+            progress.update(dt)
+            if boss is None and progress.ready:
+                boss = Boss()
+
+            # Update foods
             for f in list(foods):
                 f.update(dt, mouth.rect.center)
                 if f.rect.top > HEIGHT + 10 or f.rect.right < -50 or f.rect.left > WIDTH + 50:
                     foods.remove(f)
+
+            # Update boss and its projectiles
+            if boss is not None:
+                boss.update(dt)
+                # Boss projectiles collision with mouth increases nausea
+                for proj in list(boss.projectiles):
+                    if mouth.rect.colliderect(proj.rect):
+                        nausea = min(NAUSEA_MAX, nausea + BOSS_HIT_DAMAGE)
+                        boss.projectiles.remove(proj)
+                # Weak point: if target alive and bite flavor matches, register bite on eat below
+                # Also allow direct circular contact with the weak point (no food required)
+                if boss.active and boss.target is not None and boss.target.alive:
+                    target_mode = "SALTY" if boss.target.color_key == "BLUE" else "SWEET"
+                    if mouth.mode == target_mode:
+                        t_center = boss.target.rect.center
+                        t_radius = max(boss.target.rect.width, boss.target.rect.height) // 2
+                        if mouth.circle_hit(t_center, radius=int(t_radius * 0.35)):
+                            boss.register_bite()
 
             for f in list(foods):
                 if mouth.rect.colliderect(f.rect):
@@ -113,18 +148,34 @@ def run_game(headless_seconds: float | None = None):
                         score += 1
                         eaten.total += 1
                         eaten.per_type[f.kind] += 1
+                        # Boss weak point damage via correct-eat while target alive and matching mode
+                        if boss is not None and boss.active and boss.target is not None and boss.target.alive:
+                            target_mode = "SALTY" if boss.target.color_key == "BLUE" else "SWEET"
+                            if mouth.mode == target_mode:
+                                # Use circle hit instead of rect overlap for reliability
+                                t_center = boss.target.rect.center
+                                t_radius = max(boss.target.rect.width, boss.target.rect.height) // 2
+                                if mouth.circle_hit(t_center, radius=int(t_radius * 0.4)):
+                                    boss.register_bite()
                     else:
                         nausea = min(NAUSEA_MAX, nausea + NAUSEA_WRONG_EAT)
                     foods.remove(f)
+
+            # Boss death ends level
+            if boss is not None and boss.dead:
+                level_cleared = True
 
             if score >= LEVEL_TARGET_SCORE:
                 level_cleared = True
             if nausea >= NAUSEA_MAX:
                 game_over = True
-# --- Teddy add start---
+
+        # --- draw order ---
         # 先畫背景，再畫脖子/食物/嘴巴/HUD
         bg.draw(screen, BG_COLOR)
-# --- Teddy add end---
+        # Boss behind HUD but above background/neck; draw its projectiles with it
+        if boss is not None:
+            boss.draw(screen)
 
         draw_neck(screen, mouth.rect, elapsed)
         for f in foods:
@@ -135,6 +186,9 @@ def run_game(headless_seconds: float | None = None):
         legend_alpha = int(255 * (legend_timer / 3.0)) if legend_timer > 0 else 0
 
         draw_hud(screen, font, mouth, nausea, eaten, score, legend_alpha, level_cleared, game_over)
+        # progress bar
+        if not (level_cleared or game_over) and boss is None:
+            progress.draw(screen)
 
         pygame.display.flip()
 

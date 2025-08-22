@@ -69,9 +69,20 @@ class Mouth(pygame.sprite.Sprite):
             col = pygame.Color(180, 255, 180)
         elif flash_good is False:
             col = pygame.Color(255, 120, 120)
-        pygame.draw.ellipse(self.image, col, pygame.Rect(0, 0, w, h))
-        pygame.draw.rect(self.image, (0, 0, 0, 0), pygame.Rect(0, h//2, w, h//2))
-        pygame.draw.arc(self.image, WHITE, pygame.Rect(0, 0, w, h), math.pi, 2*math.pi, 2)
+        # Draw a circle for a clear circular visual and hitbox
+        center = (w // 2, h // 2)
+        radius = min(w, h) // 2
+        pygame.draw.circle(self.image, col, center, radius)
 
     def draw(self, surface: pygame.Surface):
         surface.blit(self.image, self.rect)
+
+    # Precise circle hit-test
+    def circle_hit(self, point: tuple[int, int], radius: int = 0) -> bool:
+        cx, cy = self.rect.center
+        cr = min(self.rect.width, self.rect.height) // 2
+        # if a target radius is provided, inflate the check by that radius
+        dx = point[0] - cx
+        dy = point[1] - cy
+        rr = (cr + radius)
+        return (dx * dx + dy * dy) <= (rr * rr)
