@@ -40,6 +40,8 @@ class Mouth(pygame.sprite.Sprite):
         self.death_timer = 0.0
         self._smoke_cd = 0.0
         self._smoke = []  # list[Smoke]
+        # brief control dampening after big impacts to preserve momentum
+        self.stagger_timer = 0.0
 
     def toggle_mode(self):
         self.mode = "SWEET" if self.mode == "SALTY" else "SALTY"
@@ -84,12 +86,18 @@ class Mouth(pygame.sprite.Sprite):
                 self.bite_timer -= dt
             self._update_image()
             return
+        # Tick stagger timer
+        if self.stagger_timer > 0:
+            self.stagger_timer = max(0.0, self.stagger_timer - dt)
+
         # Horizontal: snappy, direct ship-like movement on X
         pos = pygame.Vector2(self.rect.center)
         # Allow both Arrow keys and WASD
         right = 1 if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) else 0
         left = 1 if (keys[pygame.K_LEFT] or keys[pygame.K_a]) else 0
-        vx = (right - left) * MOUTH_SPEED_X
+        # Reduce horizontal control while staggered so momentum isn't killed instantly
+        ctrl_scale_x = 0.35 if self.stagger_timer > 0 else 1.0
+        vx = (right - left) * MOUTH_SPEED_X * ctrl_scale_x
         if vx < 0:
             self.facing = "LEFT"
         elif vx > 0:
@@ -100,13 +108,17 @@ class Mouth(pygame.sprite.Sprite):
         # Vertical: target Y moves by keys, mouth springs toward it
         down = 1 if (keys[pygame.K_DOWN] or keys[pygame.K_s]) else 0
         up = 1 if (keys[pygame.K_UP] or keys[pygame.K_w]) else 0
-        tdy = (down - up) * MOUTH_SPEED * dt
+        # Ignore vertical input briefly during stagger to maintain knockback
+        tdy = 0.0 if self.stagger_timer > 0 else (down - up) * MOUTH_SPEED * dt
         self.target.y = max(self.rect.height//2, min(HEIGHT - self.rect.height//2, self.target.y + tdy))
         self.target.x = pos.x  # spring acts only on Y
 
         # Spring toward target only on Y axis
         to_y = self.target.y - pos.y
-        ay = to_y * MOUTH_SPRING_K - self.vel.y * MOUTH_DAMPING
+        # During stagger, reduce spring pull and damping so the impulse carries farther
+        k_scale = 0.35 if self.stagger_timer > 0 else 1.0
+        d_scale = 0.65 if self.stagger_timer > 0 else 1.0
+        ay = to_y * (MOUTH_SPRING_K * k_scale) - self.vel.y * (MOUTH_DAMPING * d_scale)
         self.vel.x = 0  # prevent horizontal spring
         self.vel.y += ay * dt
         if abs(self.vel.y) > MOUTH_MAX_SPEED:
@@ -144,6 +156,14 @@ class Mouth(pygame.sprite.Sprite):
         """Apply a downward impulse to the mouth (force-like push)."""
         # Positive Y is downward in screen coords
         self.vel.y += strength
+        # Also apply a small immediate displacement so the effect is visible even with damping
+        self.rect.y += int(strength * 0.015)
+        # Briefly dampen controls so the knockback isn't cancelled by input
+        self.stagger(0.28)
+
+    def stagger(self, duration: float):
+        """Temporarily reduce control influence to preserve momentum."""
+        self.stagger_timer = max(self.stagger_timer, duration)
 
     def _update_image(self):
         state = "BITE" if self.bite_timer > 0 else "OPEN"

@@ -8,7 +8,7 @@ from .constants import WIDTH, HEIGHT, BG_COLOR, WHITE, FPS
 class InitMenu:
     """
     兩張圖交替顯示的開始畫面。
-    - 按 P 開始遊戲
+    - 按 Space 開始遊戲
     - 按 ESC 離開
     - 會自動調整圖片尺寸以符合 WIDTH x HEIGHT
     """
@@ -44,7 +44,7 @@ class InitMenu:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.running = False
-            elif event.key == pygame.K_p:
+            elif event.key == pygame.K_SPACE:
                 self.start_game = True
                 self.running = False
 
@@ -54,18 +54,28 @@ class InitMenu:
 
         # 標題與提示
         title_s = self.font_title.render("Salty/Sweet", True, WHITE)
-        hint_s  = self.font_hint.render("Press P to start the game  •  ESC to quit", True, WHITE)
+        hint_s  = self.font_hint.render("Press SPACE to start  •  ESC to quit", True, WHITE)
 
         surface.blit(title_s, (WIDTH//2 - title_s.get_width()//2, HEIGHT//2 - 60))
         surface.blit(hint_s,  (WIDTH//2 - hint_s.get_width()//2,  HEIGHT//2 + 12))
 
-    def loop(self, screen: pygame.Surface, clock: pygame.time.Clock) -> bool:
-        """顯示開始畫面，回傳 True 表示開始遊戲，False 表示離開。"""
+    def loop(self, screen_or_dm, clock: pygame.time.Clock) -> bool:
+        """顯示開始畫面，回傳 True 表示開始遊戲，False 表示離開。
+        接受 DisplayManager 或 pygame.Surface：若為前者，會使用邏輯畫面+letterboxing 呈現。
+        """
         while self.running:
             dt = clock.tick(FPS) / 1000.0
             for event in pygame.event.get():
                 self.handle_event(event)
             self.update(dt)
-            self.draw(screen)
-            pygame.display.flip()
+            # 支援 DisplayManager（有 get_logical_surface/present 方法）
+            if hasattr(screen_or_dm, "get_logical_surface") and hasattr(screen_or_dm, "present"):
+                frame = screen_or_dm.get_logical_surface()
+                frame.fill(BG_COLOR)
+                self.draw(frame)
+                screen_or_dm.present()
+            else:
+                screen = screen_or_dm  # 假設為 pygame.Surface
+                self.draw(screen)
+                pygame.display.flip()
         return self.start_game

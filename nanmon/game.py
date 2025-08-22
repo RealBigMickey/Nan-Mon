@@ -22,31 +22,37 @@ from .init_menu import InitMenu
 from .background import ScrollingBackground 
 from .constants import ASSET_FOOD_DIR,ASSET_BG_PATH 
 #--Teddy add end--
+from .display_manager import DisplayManager
 
-def run_game(headless_seconds: float | None = None):
+def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95):
     rng = random.Random(RNG_SEED)
 
     if headless_seconds is not None:
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
     pygame.init()
+    # Create DPI-safe, resizable window with logical scaling
     try:
-        screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        dm = DisplayManager(
+            margin=margin,
+            use_integer_scale=not smooth_scale,
+            caption="道地南蠻 — Salty/Sweet",
+            bg_color=(BG_COLOR.r, BG_COLOR.g, BG_COLOR.b),
+        )
     except pygame.error as e:
         print("Pygame video init failed:", e)
         return
-    pygame.display.set_caption("道地南蠻 — Salty/Sweet")
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 18)
 # --- Teddy add start---
      # --- 開始畫面（headless 模式會略過） ---
-    if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面:contentReference[oaicite:3]{index=3}
+    if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面
         init_menu = InitMenu(
             image_path_1="nanmon/assets/init_menu_1.jpg",
             image_path_2="nanmon/assets/init_menu_2.jpg",
             anim_fps=2.0,  # 每秒 2 張
         )
-        start = init_menu.loop(screen, clock)
+        start = init_menu.loop(dm, clock)
         if not start:
             pygame.quit()
             return  # 使用者按 ESC 或關閉視窗
@@ -84,20 +90,27 @@ def run_game(headless_seconds: float | None = None):
     legend_timer = 3.0
 
     running = True
+    player_invincible = False
     elapsed = 0.0
+    contact_push_cd = 0.0  # cooldown to avoid continuous boss-contact pushback
     while running:
         dt = clock.tick(FPS) / 1000.0
         bg.update(dt) #Teddy add
         elapsed += dt
+        # cooldowns
+        if contact_push_cd > 0.0:
+            contact_push_cd = max(0.0, contact_push_cd - dt)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                dm.handle_resize(event)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 if event.key == pygame.K_SPACE and not (level_cleared or game_over):
                     mouth.toggle_mode()
-                if event.key == pygame.K_r and (level_cleared or game_over):
+                if event.key == pygame.K_SPACE and (level_cleared or game_over):
                     return "RESTART"
 
         keys = pygame.key.get_pressed()
@@ -131,6 +144,9 @@ def run_game(headless_seconds: float | None = None):
             if boss is not None:
                 was_dead = boss.dead
                 boss.update(dt)
+                # Become invincible once boss starts dying
+                if getattr(boss, 'dying', False):
+                    player_invincible = True
                 # Boss projectiles collision with mouth
                 for proj in list(boss.projectiles):
                     if mouth.rect.colliderect(proj.rect):
@@ -138,7 +154,8 @@ def run_game(headless_seconds: float | None = None):
                         mouth.flash(match)
                         if match:
                             mouth.bite()  # Show bite animation for boss foods
-                        nausea = min(NAUSEA_MAX, nausea + BOSS_HIT_DAMAGE)
+                        if not player_invincible and not match:
+                            nausea = min(NAUSEA_MAX, nausea + BOSS_HIT_DAMAGE)
                         boss.projectiles.remove(proj)
                 # Impact when boss just finished dying
                 if (not was_dead) and boss.dead:
@@ -158,8 +175,24 @@ def run_game(headless_seconds: float | None = None):
                         if mouth.circle_hit(t_center, radius=int(t_radius * 0.35)):
                             mouth.bite()
                             boss.register_bite()
+                            player_invincible = True
                             # Apply strong force-based knockback to player instead of teleport
-                            mouth.knockback(strength=3200.0)
+                            mouth.knockback(strength=7200.0)
+
+                # Light pushback when touching the boss body (makes reaching target trickier)
+                if (
+                    boss is not None
+                    and boss.active
+                    and not getattr(boss, 'spawning', False)
+                    and not getattr(boss, 'dying', False)
+                    and not boss.dead
+                    and contact_push_cd <= 0.0
+                    and not player_invincible
+                    and mouth.rect.colliderect(boss.rect)
+                ):
+                    # Gentle knockback compared to weak-point hit
+                    mouth.knockback(strength=2400.0)
+                    contact_push_cd = 0.35
 
             for f in list(foods):
                 if mouth.rect.colliderect(f.rect):
@@ -180,8 +213,11 @@ def run_game(headless_seconds: float | None = None):
                                 if mouth.circle_hit(t_center, radius=int(t_radius * 0.4)):
                                     mouth.bite()
                                     boss.register_bite()
+                                    player_invincible = True
+                                    mouth.knockback(strength=7200.0)
                     else:
-                        nausea = min(NAUSEA_MAX, nausea + NAUSEA_WRONG_EAT)
+                        if not player_invincible:
+                            nausea = min(NAUSEA_MAX, nausea + NAUSEA_WRONG_EAT)
                     foods.remove(f)
 
             # Boss death ends level
@@ -190,14 +226,14 @@ def run_game(headless_seconds: float | None = None):
 
             if score >= LEVEL_TARGET_SCORE:
                 level_cleared = True
-            if nausea >= NAUSEA_MAX:
+            if nausea >= NAUSEA_MAX and not player_invincible:
                 if not game_over:
                     # trigger player death animation and shake once
                     mouth.die()
                     shake.shake(duration=0.45, magnitude=12)
                 game_over = True
 
-        # --- draw order --- (draw world to buffer first for camera shake)
+        # --- draw order --- draw to world buffer then to logical frame with shake
         world.fill((0, 0, 0, 0))
         bg.draw(world, BG_COLOR)
         # Boss behind HUD but above background/neck; draw its projectiles with it
@@ -215,20 +251,22 @@ def run_game(headless_seconds: float | None = None):
             if not s.alive:
                 world_smoke.remove(s)
 
-        # apply shake offset
+        # apply shake offset into logical frame and present with letterboxing
         shake.update(dt)
         dx, dy = shake.offset()
-        screen.blit(world, (int(dx), int(dy)))
+        frame = dm.get_logical_surface()
+        frame.fill((0, 0, 0, 0))
+        frame.blit(world, (int(dx), int(dy)))
 
         legend_timer = max(0.0, legend_timer - dt)
         legend_alpha = int(255 * (legend_timer / 3.0)) if legend_timer > 0 else 0
 
-        draw_hud(screen, font, mouth, nausea, eaten, score, legend_alpha, level_cleared, game_over)
+        draw_hud(frame, font, mouth, nausea, eaten, score, legend_alpha, level_cleared, game_over)
         # progress bar
         if not (level_cleared or game_over) and boss is None:
-            progress.draw(screen)
+            progress.draw(frame)
 
-        pygame.display.flip()
+        dm.present()
 
         if headless_seconds is not None and elapsed >= headless_seconds:
             running = False

@@ -70,8 +70,10 @@ BOSS_RING_PAIR_GAP = 0.35
 BOSS_FOOD_SPEED = 300.0
 BOSS_HIT_DAMAGE = 22.0  # nausea added when hit by boss projectile
 # Appear/Hide cycle
-BOSS_APPEAR_DURATION = 6.0
+BOSS_APPEAR_DURATION = 9.0
 BOSS_HIDE_DURATION = 3.0
+# Spawn animation duration (seconds)
+BOSS_SPAWN_DURATION = 1.2
 # Bite-to-kill
 BOSS_HIT_FLASH_TIME = 0.18
 BOSS_BITES_TO_KILL = 3

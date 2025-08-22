@@ -26,6 +26,7 @@ from .constants import (
     BOSS_BITES_TO_KILL,
     TARGET_RESPAWN_BASE,
     TARGET_RESPAWN_AFTER_BITE,
+    BOSS_SPAWN_DURATION,
 )
 from .food import Food
 from .target import Target
@@ -42,7 +43,8 @@ class Boss(pygame.sprite.Sprite):
             self.image = pygame.Surface(BOSS_SIZE, pygame.SRCALPHA)
             pygame.draw.rect(self.image, WHITE, self.image.get_rect(), 2)
 
-        self.rect = self.image.get_rect(midtop=(WIDTH // 2, BOSS_Y))
+        # Start off-screen for spawn animation
+        self.rect = self.image.get_rect(midtop=(WIDTH // 2, -BOSS_SIZE[1]))
         self.vx = BOSS_SPEED_X
         self.vy = BOSS_SPEED_Y
         self.left_bound = 40
@@ -50,8 +52,12 @@ class Boss(pygame.sprite.Sprite):
         self.shoot_cd = 0.0
         self.projectiles = pygame.sprite.Group()
 
-        # Always visible (no hide cycle)
-        self.active = True
+        # Spawn state then active
+        self.spawning = True
+        self.spawn_timer = BOSS_SPAWN_DURATION
+        self.spawn_total = BOSS_SPAWN_DURATION
+        self.target_y = BOSS_Y
+        self.active = False
 
         # Ring attack cadence
         self.ring_cd = BOSS_RING_INTERVAL * 0.5
@@ -71,6 +77,21 @@ class Boss(pygame.sprite.Sprite):
         self._smoke = []
 
     def update(self, dt: float):
+        # Handle spawn animation: slide in from top and fade in
+        if self.spawning:
+            self.spawn_timer -= dt
+            t = max(0.0, min(1.0, 1.0 - (self.spawn_timer / max(0.0001, self.spawn_total))))
+            # Ease-out cubic for smooth landing
+            ease = 1 - pow(1 - t, 3)
+            # interpolate Y
+            start_y = -self.rect.height
+            end_y = self.target_y
+            self.rect.top = int(start_y + (end_y - start_y) * ease)
+            if self.spawn_timer <= 0.0:
+                self.spawning = False
+                self.active = True
+                self.rect.top = end_y
+            return
         if self.dead:
             return
         if self.dying:
@@ -236,8 +257,17 @@ class Boss(pygame.sprite.Sprite):
             jitter = 8
             draw_rect.x += random.randint(-jitter, jitter)
             draw_rect.y += random.randint(-jitter, jitter)
-        # Base sprite
-        surface.blit(self.image, draw_rect)
+        # Base sprite (fade-in during spawn)
+        if getattr(self, 'spawning', False):
+            # Compute alpha based on progress
+            t = 1.0
+            if getattr(self, 'spawn_total', 0) > 0:
+                t = max(0.0, min(1.0, 1.0 - (self.spawn_timer / self.spawn_total)))
+            img = self.image.copy()
+            img.set_alpha(int(255 * t))
+            surface.blit(img, draw_rect)
+        else:
+            surface.blit(self.image, draw_rect)
         if self.hit_flash > 0 or self.dying:
             overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
             # while dying, blend to white as timer runs out
