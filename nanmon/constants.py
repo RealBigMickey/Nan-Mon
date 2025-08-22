@@ -37,6 +37,7 @@ NECK_SWISH_SPEED = 3.0
 MOUTH_SPRING_K = 64.0  # stronger spring = snappier vertical response
 MOUTH_DAMPING = 18.0   # higher damping = less bounce/overshoot
 MOUTH_MAX_SPEED = 1400 # allow faster catch-up without jitter
+MOUTH_BITE_DURATION = 0.12  # how long the mouth shows the bite sprite after eating
 
 # Foods
 # Make foods move much faster

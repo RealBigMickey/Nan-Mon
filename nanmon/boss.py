@@ -29,6 +29,7 @@ from .constants import (
 )
 from .food import Food
 from .target import Target
+from .effects import Smoke
 
 
 class Boss(pygame.sprite.Sprite):
@@ -54,23 +55,66 @@ class Boss(pygame.sprite.Sprite):
 
         # Ring attack cadence
         self.ring_cd = BOSS_RING_INTERVAL * 0.5
-        self._second_ring_pending: tuple[str, float] | None = None
+        self._second_ring_pending = None
 
         # Weak point and state
-        self.target: Target | None = None
+        self.target = None
         self.target_cd = 0.4
         self.bites = 0
         self.dead = False
         self.hit_flash = 0.0
+        self.pause_timer = 0.0
+        # death animation
+        self.dying = False
+        self.death_timer = 0.0
+        self._smoke_cd = 0.0
+        self._smoke = []
 
     def update(self, dt: float):
         if self.dead:
             return
-
+        if self.dying:
+            # death sequence: vibrate, spawn smoke, fall down
+            self.death_timer -= dt
+            # accelerate downward more strongly
+            self.rect.y += int(220 * dt)
+            self._smoke_cd -= dt
+            if self._smoke_cd <= 0.0:
+                self._smoke.append(Smoke(self.rect.center))
+                self._smoke_cd = 0.06
+            for s in list(self._smoke):
+                s.update(dt)
+                if not s.alive:
+                    self._smoke.remove(s)
+            if self.death_timer <= 0.0:
+                self.dead = True
+            return
+        # Pause attacks after weak point hit
+        if self.pause_timer > 0.0:
+            self.pause_timer -= dt
+            # Still update projectiles and weak point
+            for f in list(self.projectiles):
+                f.update(dt, (self.rect.centerx, self.rect.bottom))
+                if (
+                    f.rect.top > HEIGHT + 40
+                    or f.rect.right < -80
+                    or f.rect.left > WIDTH + 80
+                ):
+                    self.projectiles.remove(f)
+            if self.target is None:
+                self.target_cd -= dt
+                if self.target_cd <= 0.0:
+                    self.target = Target(self.rect)
+                    self.target_cd = TARGET_RESPAWN_BASE
+            else:
+                self.target.update(dt, self.rect)
+                if not self.target.alive:
+                    self.target = None
+                    self.target_cd = TARGET_RESPAWN_BASE
+            return
         # Hit flash
         if self.hit_flash > 0:
             self.hit_flash -= dt
-
         # Movement
         self.rect.x += int(self.vx * dt)
         if self.rect.left < self.left_bound:
@@ -79,7 +123,6 @@ class Boss(pygame.sprite.Sprite):
         elif self.rect.right > self.right_bound:
             self.rect.right = self.right_bound
             self.vx = -abs(self.vx)
-
         self.rect.y += int(self.vy * dt)
         if self.rect.top < BOSS_Y_TOP:
             self.rect.top = BOSS_Y_TOP
@@ -87,7 +130,6 @@ class Boss(pygame.sprite.Sprite):
         elif self.rect.bottom > BOSS_Y_BOTTOM:
             self.rect.bottom = BOSS_Y_BOTTOM
             self.vy = -abs(self.vy)
-
         # Rings: sequential pair
         self.ring_cd -= dt
         if self._second_ring_pending is not None:
@@ -104,13 +146,11 @@ class Boss(pygame.sprite.Sprite):
             self.spawn_ring(first)
             self._second_ring_pending = (second, BOSS_RING_PAIR_GAP)
             self.ring_cd = BOSS_RING_INTERVAL
-
         # Downward burst
         self.shoot_cd -= dt
         if self.shoot_cd <= 0.0:
             self.shoot_food_burst()
             self.shoot_cd = BOSS_SHOT_INTERVAL
-
         # Update projectiles
         for f in list(self.projectiles):
             f.update(dt, (self.rect.centerx, self.rect.bottom))
@@ -120,7 +160,6 @@ class Boss(pygame.sprite.Sprite):
                 or f.rect.left > WIDTH + 80
             ):
                 self.projectiles.remove(f)
-
         # Manage weak point target
         if self.target is None:
             self.target_cd -= dt
@@ -173,13 +212,17 @@ class Boss(pygame.sprite.Sprite):
     def register_bite(self):
         self.bites += 1
         self.hit_flash = BOSS_HIT_FLASH_TIME
+        self.pause_timer = 1.0  # Pause attacks for 1 second
         # Clear current target and use a shorter respawn
         if self.target is not None:
             self.target.alive = False
             self.target = None
             self.target_cd = TARGET_RESPAWN_AFTER_BITE
         if self.bites >= BOSS_BITES_TO_KILL:
-            self.dead = True
+            # start death animation instead of instant death
+            self.dying = True
+            self.death_timer = 2.2
+            self._smoke_cd = 0.0
 
     def draw(self, surface: pygame.Surface):
         if self.dead:
@@ -189,11 +232,28 @@ class Boss(pygame.sprite.Sprite):
             jitter = 3
             draw_rect.x += random.randint(-jitter, jitter)
             draw_rect.y += random.randint(-jitter, jitter)
+        if self.dying:
+            jitter = 8
+            draw_rect.x += random.randint(-jitter, jitter)
+            draw_rect.y += random.randint(-jitter, jitter)
+        # Base sprite
         surface.blit(self.image, draw_rect)
-        if self.hit_flash > 0:
+        if self.hit_flash > 0 or self.dying:
             overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
-            overlay.fill((255, 60, 60, 90))
+            # while dying, blend to white as timer runs out
+            if self.dying:
+                t = max(0.0, min(1.0, 1.0 - (self.death_timer / 2.2)))
+                red = 60 + int(195 * t)
+                g = 60 + int(195 * t)
+                b = 60 + int(195 * t)
+                a = 120
+                overlay.fill((red, g, b, a))
+            else:
+                overlay.fill((255, 60, 60, 120))
             surface.blit(overlay, draw_rect)
+        # smoke on top of boss sprite
+        for s in self._smoke:
+            s.draw(surface)
         if self.target is not None and self.target.alive:
             self.target.draw(surface)
         for f in self.projectiles:

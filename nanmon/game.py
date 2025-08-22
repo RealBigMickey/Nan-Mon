@@ -16,6 +16,7 @@ from .neck import draw_neck
 from .hud import draw_hud
 from .progress import Progress
 from .boss import Boss
+from .effects import Smoke, ScreenShake
 #--Teddy add start--
 from .init_menu import InitMenu 
 from .background import ScrollingBackground 
@@ -65,6 +66,10 @@ def run_game(headless_seconds: float | None = None):
     foods = pygame.sprite.Group()
     boss: Boss | None = None
     progress = Progress(BOSS_SPAWN_TIME)
+    # effects
+    shake = ScreenShake()
+    world_smoke: list[Smoke] = []
+    world = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
 
     eaten = EatenCounters()
     score = 0
@@ -124,12 +129,25 @@ def run_game(headless_seconds: float | None = None):
 
             # Update boss and its projectiles
             if boss is not None:
+                was_dead = boss.dead
                 boss.update(dt)
-                # Boss projectiles collision with mouth increases nausea
+                # Boss projectiles collision with mouth
                 for proj in list(boss.projectiles):
                     if mouth.rect.colliderect(proj.rect):
+                        match = (mouth.mode == proj.category)
+                        mouth.flash(match)
+                        if match:
+                            mouth.bite()  # Show bite animation for boss foods
                         nausea = min(NAUSEA_MAX, nausea + BOSS_HIT_DAMAGE)
                         boss.projectiles.remove(proj)
+                # Impact when boss just finished dying
+                if (not was_dead) and boss.dead:
+                    shake.shake(duration=0.6, magnitude=16)
+                    # spawn a burst of smoke at impact
+                    cx, by = boss.rect.centerx, min(HEIGHT - 20, boss.rect.bottom)
+                    for _ in range(22):
+                        s = Smoke((cx + random.randint(-60, 60), by - random.randint(0, 20)))
+                        world_smoke.append(s)
                 # Weak point: if target alive and bite flavor matches, register bite on eat below
                 # Also allow direct circular contact with the weak point (no food required)
                 if boss.active and boss.target is not None and boss.target.alive:
@@ -138,7 +156,10 @@ def run_game(headless_seconds: float | None = None):
                         t_center = boss.target.rect.center
                         t_radius = max(boss.target.rect.width, boss.target.rect.height) // 2
                         if mouth.circle_hit(t_center, radius=int(t_radius * 0.35)):
+                            mouth.bite()
                             boss.register_bite()
+                            # Apply strong force-based knockback to player instead of teleport
+                            mouth.knockback(strength=3200.0)
 
             for f in list(foods):
                 if mouth.rect.colliderect(f.rect):
@@ -148,6 +169,7 @@ def run_game(headless_seconds: float | None = None):
                         score += 1
                         eaten.total += 1
                         eaten.per_type[f.kind] += 1
+                        mouth.bite()
                         # Boss weak point damage via correct-eat while target alive and matching mode
                         if boss is not None and boss.active and boss.target is not None and boss.target.alive:
                             target_mode = "SALTY" if boss.target.color_key == "BLUE" else "SWEET"
@@ -156,6 +178,7 @@ def run_game(headless_seconds: float | None = None):
                                 t_center = boss.target.rect.center
                                 t_radius = max(boss.target.rect.width, boss.target.rect.height) // 2
                                 if mouth.circle_hit(t_center, radius=int(t_radius * 0.4)):
+                                    mouth.bite()
                                     boss.register_bite()
                     else:
                         nausea = min(NAUSEA_MAX, nausea + NAUSEA_WRONG_EAT)
@@ -168,19 +191,34 @@ def run_game(headless_seconds: float | None = None):
             if score >= LEVEL_TARGET_SCORE:
                 level_cleared = True
             if nausea >= NAUSEA_MAX:
+                if not game_over:
+                    # trigger player death animation and shake once
+                    mouth.die()
+                    shake.shake(duration=0.45, magnitude=12)
                 game_over = True
 
-        # --- draw order ---
-        # 先畫背景，再畫脖子/食物/嘴巴/HUD
-        bg.draw(screen, BG_COLOR)
+        # --- draw order --- (draw world to buffer first for camera shake)
+        world.fill((0, 0, 0, 0))
+        bg.draw(world, BG_COLOR)
         # Boss behind HUD but above background/neck; draw its projectiles with it
         if boss is not None:
-            boss.draw(screen)
+            boss.draw(world)
 
-        draw_neck(screen, mouth.rect, elapsed)
+        draw_neck(world, mouth.rect, elapsed)
         for f in foods:
-            f.draw(screen)
-        mouth.draw(screen)
+            f.draw(world)
+        mouth.draw(world)
+        # draw world-level smoke (impacts)
+        for s in list(world_smoke):
+            s.update(dt)
+            s.draw(world)
+            if not s.alive:
+                world_smoke.remove(s)
+
+        # apply shake offset
+        shake.update(dt)
+        dx, dy = shake.offset()
+        screen.blit(world, (int(dx), int(dy)))
 
         legend_timer = max(0.0, legend_timer - dt)
         legend_alpha = int(255 * (legend_timer / 3.0)) if legend_timer > 0 else 0
