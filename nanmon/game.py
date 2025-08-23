@@ -115,6 +115,16 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     mouth.toggle_mode()
                 if event.key == pygame.K_SPACE and game_over:
                     return "RESTART"
+                if event.key == pygame.K_F6:
+                    # Debug: force S-rank by boosting score and eaten count
+                    try:
+                        target = float(LEVEL_TARGET_SCORE)
+                    except Exception:
+                        target = 100.0
+                    # Ensure rank S (>= 2x target) and instant clear
+                    score = max(score, target * 2.5)
+                    eaten.total = max(int(eaten.total), int(target * 2.1))
+                    level_cleared = True
                 if event.key == pygame.K_F7:
                     # Debug: instantly clear the level to test finish screen
                     level_cleared = True

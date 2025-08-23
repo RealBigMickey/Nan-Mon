@@ -28,22 +28,10 @@ class DisplayManager:
         # depend on a display mode being set (convert_alpha requires that).
         self.logical = pygame.Surface((LOGICAL_W, LOGICAL_H), pygame.SRCALPHA)
 
-        # Detect display size; provide sane fallback for dummy/headless
-        info = pygame.display.Info()
-        sw = info.current_w or (LOGICAL_W * 2)
-        sh = info.current_h or (LOGICAL_H * 2)
-
-        # Initial window size that fits within the screen (with margin)
-        scale = min((sw * self.margin) / LOGICAL_W, (sh * self.margin) / LOGICAL_H)
-        if self.use_integer_scale:
-            scale = max(1, int(scale))
-        else:
-            scale = max(1.0, scale)
-        win_w = int(LOGICAL_W * scale)
-        win_h = int(LOGICAL_H * scale)
-
-        # Create resizable window
-        self.window = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
+        # Create a fixed-size window (lock to logical size; no resize/maximize handling)
+        win_w = int(LOGICAL_W)
+        win_h = int(LOGICAL_H)
+        self.window = pygame.display.set_mode((win_w, win_h))
         pygame.display.set_caption(caption)
 
         # Derived state
@@ -75,10 +63,8 @@ class DisplayManager:
         self.dest_rect = pygame.Rect(x, y, out_w, out_h)
 
     def handle_resize(self, event: pygame.event.Event) -> None:
-        # Enforce minimum size big enough for 1x logical rendering
-        new_w = max(event.w, LOGICAL_W)
-        new_h = max(event.h, LOGICAL_H)
-        self.window = pygame.display.set_mode((new_w, new_h), pygame.RESIZABLE)
+        # Ignore resize; force window back to fixed logical size
+        self.window = pygame.display.set_mode((LOGICAL_W, LOGICAL_H))
         self._recompute_letterbox()
 
     def get_logical_surface(self) -> pygame.Surface:
