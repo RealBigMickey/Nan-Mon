@@ -70,8 +70,8 @@ class Mouth(pygame.sprite.Sprite):
                 img = pygame.Surface(MOUTH_SIZE, pygame.SRCALPHA)
                 color = SALTY_COLOR if key[0] == "SALTY" else SWEET_COLOR
                 pygame.draw.circle(img, color, (MOUTH_SIZE[0]//2, MOUTH_SIZE[1]//2), min(MOUTH_SIZE)//2)
-            # scale to desired mouth size to match hitbox
-            img = pygame.transform.smoothscale(img, MOUTH_SIZE)
+            # scale to desired mouth size with nearest-neighbor for crisp pixels
+            img = pygame.transform.scale(img, MOUTH_SIZE)
             sprites[key] = img
         return sprites
 

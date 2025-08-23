@@ -24,6 +24,7 @@ from .background import ScrollingBackground
 from .constants import ASSET_FOOD_DIR,ASSET_BG_PATH 
 #--Teddy add end--
 from .display_manager import DisplayManager
+from .finish_screen import FinishScreen
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95):
     rng = random.Random(RNG_SEED)
@@ -79,7 +80,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     world = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
 
     eaten = EatenCounters()
-    score = 0
+    score: float = 0.0
     nausea = 0.0
 
     spawn_timer = 0.0
@@ -112,8 +113,11 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     running = False
                 if event.key == pygame.K_SPACE and not (level_cleared or game_over):
                     mouth.toggle_mode()
-                if event.key == pygame.K_SPACE and (level_cleared or game_over):
+                if event.key == pygame.K_SPACE and game_over:
                     return "RESTART"
+                if event.key == pygame.K_F7:
+                    # Debug: instantly clear the level to test finish screen
+                    level_cleared = True
 
         keys = pygame.key.get_pressed()
 
@@ -155,7 +159,16 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         match = (mouth.mode == proj.category)
                         mouth.flash(match)
                         if match:
+                            # Count boss foods toward eaten totals when correctly matched
                             mouth.bite()  # Show bite animation for boss foods
+                            try:
+                                eaten.total += 1
+                                eaten.per_type[proj.kind] += 1
+                            except Exception:
+                                # Be robust if a projectile lacks kind or mapping
+                                pass
+                            # Boss foods contribute only a quarter score
+                            score += 0.25
                         if not player_invincible and not match:
                             dmg = BOSS_HIT_DAMAGE_BY_KIND.get(getattr(proj, "kind", ""), BOSS_HIT_DAMAGE)
                             nausea = min(NAUSEA_MAX, nausea + dmg)
@@ -200,7 +213,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     match = (mouth.mode == f.category)
                     mouth.flash(match)
                     if match:
-                        score += 1
+                        score += 1.0
                         eaten.total += 1
                         eaten.per_type[f.kind] += 1
                         mouth.bite()
@@ -261,12 +274,19 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         legend_timer = max(0.0, legend_timer - dt)
         legend_alpha = int(255 * (legend_timer / 3.0)) if legend_timer > 0 else 0
 
-        draw_hud(frame, font, mouth, nausea, eaten, score, legend_alpha, level_cleared, game_over)
+        draw_hud(frame, font, mouth, nausea, eaten, int(score), legend_alpha, level_cleared, game_over)
         # progress bar
         if not (level_cleared or game_over) and boss is None:
             progress.draw(frame)
 
         dm.present()
+
+        # When level is cleared, break to the finish screen
+        if level_cleared:
+            # Run finish screen with results; then return to home
+            fs = FinishScreen(eaten)
+            fs.loop(dm, clock)
+            return "RESTART"
 
         # Track boss contact edge for next frame
         boss_contact_prev = boss_contact_now if 'boss_contact_now' in locals() else False
