@@ -14,7 +14,8 @@ def _maybe_set_windows_dpi_aware():
     try:
         import ctypes  # type: ignore
         ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:res; game still runs
+    except Exception:
+        # Ignore failures; game still runs
         pass
 
 

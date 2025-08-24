@@ -46,7 +46,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         print("Pygame video init failed:", e)
         return
     clock = pygame.time.Clock()
-    font = pygame.font.Font(None, 18)
+    pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
+    font = pygame.font.Font(pixel_font_path, 16)
 # --- Teddy add start---
      # --- 開始畫面（headless 模式會略過） ---
     if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面

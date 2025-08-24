@@ -87,11 +87,12 @@ class FinishScreen:
         self._bite_duration = 0.06
 
         # Fonts
-        self.font = pygame.font.Font(None, 28)
-        self.font_small = pygame.font.Font(None, 22)
-        self.font_big = pygame.font.Font(None, 96)
-        self.font_title = pygame.font.Font(None, 48)
-        self.font_list = pygame.font.Font(None, 34)
+        pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
+        self.font = pygame.font.Font(pixel_font_path, 28)
+        self.font_small = pygame.font.Font(pixel_font_path, 22)
+        self.font_big = pygame.font.Font(pixel_font_path, 96)
+        self.font_title = pygame.font.Font(pixel_font_path, 48)
+        self.font_list = pygame.font.Font(pixel_font_path, 34)
 
         # Grade reveal state and optional sounds
         self.show_grade = False

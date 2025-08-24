@@ -28,9 +28,31 @@ class InitMenu:
         self.running = True
         self.start_game = False
 
-        # 用與遊戲一致的字型風格（目前 game.py 以 Font(None, 18) 為主）
-        self.font_title = pygame.font.Font(None, 48)
-        self.font_hint  = pygame.font.Font(None, 28)
+        # 使用 Pixel Emulator 字型
+        pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
+        # 字體大小縮小，標題 32，提示 18
+        self.font_title = pygame.font.Font(pixel_font_path, 32)
+        self.font_hint  = pygame.font.Font(pixel_font_path, 18)
+
+        # 初始化選單音效
+        sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
+        self.menu_sound = None
+        if os.path.exists(sound_path):
+            try:
+                self.menu_sound = pygame.mixer.Sound(sound_path)
+            except Exception:
+                self.menu_sound = None
+
+        # 初始化並播放背景音樂
+        self.bg_music_playing = False
+        bg_music_path = os.path.join("nanmon", "assets", "sounds", "init_menu_background_sounds.wav")
+        if os.path.exists(bg_music_path):
+            try:
+                pygame.mixer.music.load(bg_music_path)
+                pygame.mixer.music.play(-1)
+                self.bg_music_playing = True
+            except Exception:
+                self.bg_music_playing = False
 
     def update(self, dt: float):
         self.timer += dt
