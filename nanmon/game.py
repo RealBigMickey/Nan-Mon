@@ -24,7 +24,7 @@ from .background import ScrollingBackground
 from .constants import ASSET_FOOD_DIR,ASSET_BG_PATH 
 #--Teddy add end--
 from .display_manager import DisplayManager
-from .finish_screen import FinishScreen
+from .clear_screen import FinishScreen
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95):
     rng = random.Random(RNG_SEED)
