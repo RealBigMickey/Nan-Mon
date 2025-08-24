@@ -24,7 +24,7 @@ from .background import ScrollingBackground
 from .constants import ASSET_FOOD_DIR,ASSET_BG_PATH 
 #--Teddy add end--
 from .display_manager import DisplayManager
-from .finish_screen import FinishScreen
+from .clear_screen import FinishScreen
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95):
     rng = random.Random(RNG_SEED)
@@ -99,12 +99,16 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     boss_contact_prev = False  # track edge of collision with boss body
     # 加入選單音效
     menu_sound = None
+    eat_sound = None
     try:
         if not pygame.mixer.get_init():
             pygame.mixer.init()
-            sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
+        sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
+        eat_sound_path = os.path.join("nanmon", "assets", "sounds", "eat_sounds.wav")
         if os.path.exists(sound_path):
             menu_sound = pygame.mixer.Sound(sound_path)
+        if os.path.exists(eat_sound_path):
+            eat_sound = pygame.mixer.Sound(eat_sound_path)
     except Exception:
         menu_sound = None
     while running:
@@ -237,6 +241,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 if mouth.rect.colliderect(f.rect):
                     match = (mouth.mode == f.category)
                     mouth.flash(match)
+                    if eat_sound:
+                        eat_sound.play()
                     if match:
                         score += 1.0
                         eaten.total += 1
