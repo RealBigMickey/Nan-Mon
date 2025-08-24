@@ -27,6 +27,7 @@ from .display_manager import DisplayManager
 from .constants import FONT_PATH
 from .clear_screen import FinishScreen
 import os
+from .levels import get_level
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95):
     rng = random.Random(RNG_SEED)
@@ -66,21 +67,32 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             pygame.quit()
             return  # 使用者按 ESC 或關閉視窗
         
+    # ---- Level setup ----
+    level_cfg = get_level(selected_level)
+
+    # Optional per-level music
+    try:
+        if level_cfg.music_path:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            if os.path.exists(level_cfg.music_path):
+                pygame.mixer.music.load(level_cfg.music_path)
+                pygame.mixer.music.play(-1)
+    except Exception:
+        pass
+
     # ---- 背景：兩張圖上下滾動並交替 ----
     bg = ScrollingBackground(
-        image_paths=[
-            os.path.join(ASSET_BG_PATH, "game_bg1.png"),
-        os.path.join(ASSET_BG_PATH, "game_bg2.png"),
-        ],
+        image_paths=level_cfg.bg_images,
         canvas_size=(WIDTH, HEIGHT),
-        speed_y=40.0,   # 想更快/更慢可調整
+        speed_y=level_cfg.bg_scroll_speed,
     )
 # --- Teddy add end ---
 
     mouth = Mouth((WIDTH//2, HEIGHT - 140))
     foods = pygame.sprite.Group()
     boss: Boss | None = None
-    progress = Progress(BOSS_SPAWN_TIME)
+    progress = Progress(level_cfg.boss_spawn_time)
     # effects
     shake = ScreenShake()
     world_smoke: list[Smoke] = []
@@ -91,7 +103,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     nausea = 0.0
 
     spawn_timer = 0.0
-    next_spawn = rng.uniform(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
+    next_spawn = rng.uniform(level_cfg.spawn_interval_min, level_cfg.spawn_interval_max)
 
     level_cleared = False
     game_over = False
@@ -191,15 +203,20 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             # Standard spawns nearly zero during boss
             if boss is None:
                 spawn_timer += dt
-                if spawn_timer >= next_spawn and len(foods) < MAX_ONSCREEN_FOOD:
-                    foods.add(make_food(rng))
+                if spawn_timer >= next_spawn and len(foods) < level_cfg.max_onscreen_food:
+                    foods.add(make_food(rng, level_cfg))
                     spawn_timer = 0.0
-                    next_spawn = rng.uniform(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
+                    next_spawn = rng.uniform(level_cfg.spawn_interval_min, level_cfg.spawn_interval_max)
 
             # Spawn boss when progress ready
             progress.update(dt)
             if boss is None and progress.ready:
-                boss = Boss()
+                boss = Boss()  # instantiate; Boss supports level config via attribute if available
+                # Attach level config if Boss supports it
+                try:
+                    setattr(boss, "_lvl", level_cfg)
+                except Exception:
+                    pass
 
             # Update foods
             for f in list(foods):
@@ -218,6 +235,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 for proj in list(boss.projectiles):
                     if mouth.rect.colliderect(proj.rect):
                         match = (mouth.mode == proj.category)
+                        if getattr(level_cfg, 'invert_modes', False):
+                            match = not match
                         mouth.flash(match)
                         if match:
                             # Count boss foods toward eaten totals when correctly matched
@@ -233,7 +252,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                             score += 0.25
                         if not player_invincible and not match:
                             dmg = BOSS_HIT_DAMAGE_BY_KIND.get(getattr(proj, "kind", ""), BOSS_HIT_DAMAGE)
-                            nausea = min(NAUSEA_MAX, nausea + dmg)
+                            # Apply per-level multiplier
+                            nausea = min(NAUSEA_MAX, nausea + dmg * getattr(level_cfg, 'nausea_damage_multiplier', 1.0))
                         boss.projectiles.remove(proj)
                 # Impact when boss just finished dying
                 if (not was_dead) and boss.dead:
@@ -247,6 +267,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 # Also allow direct circular contact with the weak point (no food required)
                 if boss.active and boss.target is not None and boss.target.alive:
                     target_mode = "SALTY" if boss.target.color_key == "BLUE" else "SWEET"
+                    if getattr(level_cfg, 'invert_modes', False):
+                        target_mode = "SWEET" if target_mode == "SALTY" else "SALTY"
                     if mouth.mode == target_mode:
                         t_center = boss.target.rect.center
                         t_radius = max(boss.target.rect.width, boss.target.rect.height) // 2
@@ -272,7 +294,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
 
             for f in list(foods):
                 if mouth.rect.colliderect(f.rect):
+                    # Optional inverted mode mechanic per-level
                     match = (mouth.mode == f.category)
+                    if getattr(level_cfg, 'invert_modes', False):
+                        match = not match
                     mouth.flash(match)
                     if eat_sound:
                         eat_sound.play()
@@ -285,6 +310,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         # Boss weak point damage via correct-eat while target alive and matching mode
                         if boss is not None and boss.active and boss.target is not None and boss.target.alive:
                             target_mode = "SALTY" if boss.target.color_key == "BLUE" else "SWEET"
+                            if getattr(level_cfg, 'invert_modes', False):
+                                target_mode = "SWEET" if target_mode == "SALTY" else "SALTY"
                             if mouth.mode == target_mode:
                                 # Use circle hit instead of rect overlap for reliability
                                 t_center = boss.target.rect.center
@@ -297,7 +324,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         # Count as eaten (wrong) and apply nausea if not invincible
                         eaten.total += 1
                         if not player_invincible:
-                            nausea = min(NAUSEA_MAX, nausea + NAUSEA_WRONG_EAT)
+                            nausea_add = getattr(level_cfg, 'nausea_wrong_eat', NAUSEA_WRONG_EAT)
+                            nausea = min(NAUSEA_MAX, nausea + nausea_add)
                     foods.remove(f)
 
             # Boss death ends level
