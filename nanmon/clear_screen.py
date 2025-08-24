@@ -42,7 +42,7 @@ class FinishScreen:
         self._y_offset = 60
 
         # Scrolling background setup
-        self._bg_img: pygame.Surface | None = None
+        self._bg_img = None
         self._bg_h = 0
         self._bg_y = 0.0
         self._bg_speed = 60.0
@@ -55,7 +55,7 @@ class FinishScreen:
         self.done = (sum(self.counts.values()) == 0)
 
         # Load food images (nearest-neighbor)
-        self.food_imgs: dict[str, pygame.Surface] = {}
+        self.food_imgs = {}
         for k in KINDS:
             path = os.path.join(ASSET_FOOD_DIR, f"{k}.png")
             try:
@@ -71,8 +71,8 @@ class FinishScreen:
         self.mouth_scale = 3.5
 
         # Collections
-        self.flying: list[SpewItem] = []
-        self.settled: list[SpewItem] = []
+        self.flying = []
+        self.settled = []
 
         # Pile region and cadence
         self.pile_left = 20
@@ -98,43 +98,44 @@ class FinishScreen:
         self.show_grade = False
         self.grade_reveal_started = False
         self.grade_reveal_timer = 0.0
-        self._drum_snd: pygame.mixer.Sound | None = None
+        self._drum_snd = None
         self._drum_chan = None
+        self._pop_snd = None
         # Celebration state
         self._reveal_time = 0.0
-        self._confetti: list[dict] = []
+        self._confetti = []
         self._confetti_trickle = 0.0
         self._confetti_accum = 0.0
-        self._cheer_snd: pygame.mixer.Sound | None = None
+        self._cheer_snd = None
         self._cheer_chan = None
-        self._spray_snd: pygame.mixer.Sound | None = None
-        self._smoke: list[Smoke] = []
+        self._spray_snd = None
+        self._smoke = []
         self._flash_time = 0.0
         self._impact_jitter_time = 0.0
         self._impact_jitter_mag = 0.0
 
         # Rank images (S, A, B, C, D, F)
-        self._rank_imgs: dict[str, pygame.Surface] = {}
+        self._rank_imgs = {}
         self._rank_base_h = int(HEIGHT * 0.24)
 
         # Clapping sprite (shown for ranks A and S)
-        self._clap_img: pygame.Surface | None = None
+        self._clap_img = None
         self._clap_phase = 0.0
         self._need_smoke_spawn = False
 
         # Optional images (scoreboard, plate)
-        self._scoreboard_img: pygame.Surface | None = None
+        self._scoreboard_img = None
         self._scoreboard_h = 0
-        self._plate_img: pygame.Surface | None = None
+        self._plate_img = None
         self._plate_h = 0
 
         # Optional container hitbox (not drawn)
-        self._container_mask: pygame.mask.Mask | None = None
-        self._container_rect: pygame.Rect | None = None
-        self._container_img: pygame.Surface | None = None  # original image
-        self._walls_mask: pygame.mask.Mask | None = None   # outline/solid pixels from image
-        self._interior_mask: pygame.mask.Mask | None = None  # filled interior computed
-        self._active_mask: pygame.mask.Mask | None = None   # mask used for collisions
+        self._container_mask = None
+        self._container_rect = None
+        self._container_img = None  # original image
+        self._walls_mask = None   # outline/solid pixels from image
+        self._interior_mask = None  # filled interior computed
+        self._active_mask = None   # mask used for collisions
         # Load media/assets
         self._load_media()
 
@@ -144,7 +145,7 @@ class FinishScreen:
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
-            for name, attr in (("drumroll.ogg", "_drum_snd"), ("cheer.ogg", "_cheer_snd"), ("spray.ogg", "_spray_snd")):
+            for name, attr in (("drumroll.ogg", "_drum_snd"), ("cheer.ogg", "_cheer_snd"), ("spray.ogg", "_spray_snd"), ("pop.ogg", "_pop_snd"), ("pop.wav", "_pop_snd")):
                 p = os.path.join("nanmon", "assets", name)
                 if os.path.exists(p):
                     setattr(self, attr, pygame.mixer.Sound(p))
@@ -435,6 +436,12 @@ class FinishScreen:
         vx = (tx - x0) / T + random.uniform(-12, 10)
         vy = (ty - y0 - 0.5 * GRAVITY * T * T) / T + random.uniform(-10, 2)
         self.flying.append(SpewItem(kind, img, x0, y0, vx, vy))
+        # Play pop sound on spawn (if available)
+        if self._pop_snd is not None:
+            try:
+                self._pop_snd.play()
+            except Exception:
+                pass
 
     def _next_spew(self) -> None:
         if self.done:
@@ -473,6 +480,9 @@ class FinishScreen:
 
     def loop(self, dm, clock) -> None:
         running = True
+        # Fade-in from white for the result screen
+        fade_in_t = 0.0
+        fade_in_dur = 0.5
         fixed_mouth_pos = (int(WIDTH * 0.82), int(HEIGHT * 0.72) - self._y_offset)
         while running:
             dt = clock.tick(60) / 1000.0
@@ -741,6 +751,16 @@ class FinishScreen:
                     clap_rect = self._clap_img.get_rect()
                     clap_rect.midbottom = (WIDTH // 2, bottom_y)
                     surf.blit(self._clap_img, clap_rect)
+
+            # Fade-in overlay
+            if fade_in_t < fade_in_dur:
+                fade_in_t = min(fade_in_dur, fade_in_t + dt)
+                t = fade_in_t / max(0.001, fade_in_dur)
+                alpha = int(255 * (1.0 - t))
+                if alpha > 0:
+                    white = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                    white.fill((255, 255, 255, alpha))
+                    surf.blit(white, (0, 0))
 
             dm.present()
             # end of frame

@@ -51,8 +51,8 @@ def draw_hud(surface: pygame.Surface, font: pygame.font.Font, mouth: Mouth, naus
         surface.blit(legend_surf, (WIDTH//2 - legend_surf.get_width()//2, 10 + txt.get_height() + 4))
 
     if level_cleared:
-        msg = font.render("LEVEL CLEARED – Press SPACE to restart", True, WHITE)
+        msg = font.render("LEVEL CLEARED!", True, WHITE)
         surface.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2 - 30))
     elif game_over:
-        msg = font.render("GAME OVER – Press SPACE to restart", True, WHITE)
+        msg = font.render("GAME OVER!", True, WHITE)
         surface.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2 - 30))

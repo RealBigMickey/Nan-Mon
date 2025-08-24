@@ -112,6 +112,14 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             eat_sound = pygame.mixer.Sound(eat_sound_path)
     except Exception:
         menu_sound = None
+    # Fade-in from black at gameplay start
+    fade_in_time = 0.0
+    fade_in_duration = 0.3
+    fade_to_finish = False
+    fade_finish_time = 0.0
+    fade_finish_duration = 0.6
+    waiting_clear_space = False
+
     while running:
         dt = clock.tick(FPS) / 1000.0
         bg.update(dt) #Teddy add
@@ -135,6 +143,11 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     if menu_sound:
                         menu_sound.play()
                     return "RESTART"
+                if event.key == pygame.K_SPACE and level_cleared:
+                    # proceed to finish screen on space
+                    waiting_clear_space = False
+                    fade_to_finish = True
+                    fade_finish_time = 0.0
                 if event.key == pygame.K_F6:
                     # Debug: force S-rank by boosting score and eaten count
                     try:
@@ -307,18 +320,42 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         legend_alpha = int(255 * (legend_timer / 3.0)) if legend_timer > 0 else 0
 
         draw_hud(frame, font, mouth, nausea, eaten, int(score), legend_alpha, level_cleared, game_over)
+        # If cleared, show continue prompt
+        if level_cleared:
+            msg = font.render("Press SPACE to continue", True, WHITE)
+            frame.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2 + 10))
         # progress bar
         if not (level_cleared or game_over) and boss is None:
             progress.draw(frame)
+
+        # Optional fades
+        if fade_in_time < fade_in_duration:
+            fade_in_time = min(fade_in_duration, fade_in_time + dt)
+            t = fade_in_time / max(0.001, fade_in_duration)
+            # Left-to-right wipe: start fully covered, reveal to the right quickly
+            cover_x = int(WIDTH * t)
+            cover_w = max(0, WIDTH - cover_x)
+            if cover_w > 0:
+                pygame.draw.rect(frame, (0, 0, 0), pygame.Rect(cover_x, 0, cover_w, HEIGHT))
+        if fade_to_finish:
+            fade_finish_time = min(fade_finish_duration, fade_finish_time + dt)
+            t2 = fade_finish_time / max(0.001, fade_finish_duration)
+            alpha2 = int(255 * t2)
+            if alpha2 > 0:
+                overlay2 = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                # white flash to finish
+                overlay2.fill((255, 255, 255, alpha2))
+                frame.blit(overlay2, (0, 0))
 
         dm.present()
 
         # When level is cleared, break to the finish screen
         if level_cleared:
-            # Run finish screen with results; then return to home
-            fs = FinishScreen(eaten)
-            fs.loop(dm, clock)
-            return "RESTART"
+            # Wait for SPACE to begin transition
+            if fade_to_finish and fade_finish_time >= fade_finish_duration:
+                fs = FinishScreen(eaten)
+                fs.loop(dm, clock)
+                return "RESTART"
 
         # Track boss contact edge for next frame
         boss_contact_prev = boss_contact_now if 'boss_contact_now' in locals() else False

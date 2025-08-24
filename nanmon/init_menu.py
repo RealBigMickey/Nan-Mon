@@ -16,25 +16,30 @@ class InitMenu:
                  image_path_1: str = "nanmon/assets/init_menu_1.jpg",
                  image_path_2: str = "nanmon/assets/init_menu_2.jpg",
                  anim_fps: float = 2.0):
+        # Load and scale images to logical resolution
         self.images = []
         for path in (image_path_1, image_path_2):
             img = pygame.image.load(path).convert_alpha()
             img = pygame.transform.smoothscale(img, (WIDTH, HEIGHT))
             self.images.append(img)
 
-        self.anim_fps = anim_fps
+        # Animation and state
+        self.anim_fps = float(anim_fps)
         self.timer = 0.0
         self.index = 0
         self.running = True
         self.start_game = False
+        # Fade-out to gameplay state
+        self._fade_out = False
+        self._fade_time = 0.0
+        self._fade_duration = 0.6  # seconds
 
-        # 使用 Pixel Emulator 字型
+        # Fonts (Pixel Emulator)
         pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
-        # 字體大小縮小，標題 32，提示 18
         self.font_title = pygame.font.Font(pixel_font_path, 32)
-        self.font_hint  = pygame.font.Font(pixel_font_path, 18)
+        self.font_hint = pygame.font.Font(pixel_font_path, 18)
 
-        # 初始化選單音效
+        # Menu select SFX
         sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
         self.menu_sound = None
         if os.path.exists(sound_path):
@@ -43,10 +48,16 @@ class InitMenu:
             except Exception:
                 self.menu_sound = None
 
-        # 初始化並播放背景音樂
+        # Background music (loop)
         self.bg_music_playing = False
         bg_music_path = os.path.join("nanmon", "assets", "sounds", "init_menu_background_sounds.wav")
         if os.path.exists(bg_music_path):
+            try:
+                pygame.mixer.music.load(bg_music_path)
+                pygame.mixer.music.play(-1)
+                self.bg_music_playing = True
+            except Exception:
+                self.bg_music_playing = False
             try:
                 pygame.mixer.music.load(bg_music_path)
                 pygame.mixer.music.play(-1)
@@ -71,8 +82,10 @@ class InitMenu:
             elif event.key == pygame.K_SPACE:
                 if self.menu_sound:
                     self.menu_sound.play()
+                # Begin fade-out to gameplay instead of exiting immediately
                 self.start_game = True
-                self.running = False
+                self._fade_out = True
+                self._fade_time = 0.0
 
     def draw(self, surface: pygame.Surface):
         surface.fill(BG_COLOR)
@@ -80,7 +93,7 @@ class InitMenu:
 
         # 標題與提示
         title_s = self.font_title.render("Salty/Sweet", True, WHITE)
-        hint_s  = self.font_hint.render("Press SPACE to start  •  ESC to quit", True, WHITE)
+        hint_s  = self.font_hint.render("Press SPACE to start, ESC to quit", True, WHITE)
 
         surface.blit(title_s, (WIDTH//2 - title_s.get_width()//2, HEIGHT//2 - 60))
         surface.blit(hint_s,  (WIDTH//2 - hint_s.get_width()//2,  HEIGHT//2 + 12))
@@ -99,10 +112,28 @@ class InitMenu:
                 frame = screen_or_dm.get_logical_surface()
                 frame.fill(BG_COLOR)
                 self.draw(frame)
+                # Black wipe from left to right when starting
+                if self._fade_out:
+                    self._fade_time += dt
+                    t = min(1.0, self._fade_time / max(0.001, self._fade_duration))
+                    wipe_w = int(WIDTH * t)
+                    if wipe_w > 0:
+                        pygame.draw.rect(frame, (0, 0, 0), pygame.Rect(0, 0, wipe_w, HEIGHT))
+                    if t >= 1.0:
+                        self.running = False
                 screen_or_dm.present()
             else:
                 screen = screen_or_dm  # 假設為 pygame.Surface
                 self.draw(screen)
+                # Black wipe from left to right when starting
+                if self._fade_out:
+                    self._fade_time += dt
+                    t = min(1.0, self._fade_time / max(0.001, self._fade_duration))
+                    wipe_w = int(WIDTH * t)
+                    if wipe_w > 0:
+                        pygame.draw.rect(screen, (0, 0, 0), pygame.Rect(0, 0, wipe_w, HEIGHT))
+                    if t >= 1.0:
+                        self.running = False
                 pygame.display.flip()
         # 停止背景音樂
         if self.bg_music_playing:
