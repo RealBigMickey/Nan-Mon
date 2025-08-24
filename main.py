@@ -1,9 +1,8 @@
 import argparse
 import os
 import sys
-import platform
+import platform 
 from nanmon.game import run_game
-
 
 def _maybe_set_windows_dpi_aware():
     """Optionally set process DPI awareness on Windows to avoid OS upscaling.

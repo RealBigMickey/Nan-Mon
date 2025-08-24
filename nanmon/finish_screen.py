@@ -83,10 +83,10 @@ class FinishScreen:
         self._bite_delay_timer = -1.0
         self._bite_duration = 0.06
 
-        # Fonts
-        self.font = pygame.font.Font(None, 28)
-        self.font_small = pygame.font.Font(None, 22)
-        self.font_big = pygame.font.Font(None, 96)
+        pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
+        self.font = pygame.font.Font(pixel_font_path, 32)
+        self.font_small = pygame.font.Font(pixel_font_path, 22)
+        self.font_big = pygame.font.Font(pixel_font_path, 96)
 
         # Grade reveal state and optional drum roll sound
         self.show_grade = False
@@ -316,8 +316,26 @@ class FinishScreen:
                     return
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
+                        # 播放選單音效
+                        try:
+                            if not pygame.mixer.get_init():
+                                pygame.mixer.init()
+                            sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
+                            if os.path.exists(sound_path):
+                                pygame.mixer.Sound(sound_path).play()
+                        except Exception:
+                            pass
                         return
                     if event.key == pygame.K_SPACE and self.done:
+                        # 播放選單音效
+                        try:
+                            if not pygame.mixer.get_init():
+                                pygame.mixer.init()
+                            sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
+                            if os.path.exists(sound_path):
+                                pygame.mixer.Sound(sound_path).play()
+                        except Exception:
+                            pass
                         return
 
             keys = pygame.key.get_pressed()

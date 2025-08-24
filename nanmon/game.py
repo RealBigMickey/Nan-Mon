@@ -45,7 +45,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         print("Pygame video init failed:", e)
         return
     clock = pygame.time.Clock()
-    font = pygame.font.Font(None, 18)
+    pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
+    font = pygame.font.Font(pixel_font_path, 16)
 # --- Teddy add start---
      # --- 開始畫面（headless 模式會略過） ---
     if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面
@@ -96,6 +97,16 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     elapsed = 0.0
     contact_push_cd = 0.0  # cooldown to avoid continuous boss-contact pushback
     boss_contact_prev = False  # track edge of collision with boss body
+    # 加入選單音效
+    menu_sound = None
+    try:
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+            sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
+        if os.path.exists(sound_path):
+            menu_sound = pygame.mixer.Sound(sound_path)
+    except Exception:
+        menu_sound = None
     while running:
         dt = clock.tick(FPS) / 1000.0
         bg.update(dt) #Teddy add
@@ -110,10 +121,14 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 dm.handle_resize(event)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    if menu_sound:
+                        menu_sound.play()
                     running = False
                 if event.key == pygame.K_SPACE and not (level_cleared or game_over):
                     mouth.toggle_mode()
                 if event.key == pygame.K_SPACE and game_over:
+                    if menu_sound:
+                        menu_sound.play()
                     return "RESTART"
                 if event.key == pygame.K_F6:
                     # Debug: force S-rank by boosting score and eaten count
