@@ -5,7 +5,7 @@ import math
 import pygame
 from .constants import (
     WIDTH, HEIGHT, FPS, RNG_SEED, BG_COLOR, WHITE,
-    LEVEL_TARGET_SCORE, SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX,
+    SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX,
     MAX_ONSCREEN_FOOD, NAUSEA_MAX, NAUSEA_WRONG_EAT, NAUSEA_DECAY_PER_SEC,
     BOSS_SPAWN_TIME, BOSS_HIT_DAMAGE,
     BOSS_HIT_DAMAGE_BY_KIND,
@@ -26,6 +26,7 @@ from .constants import ASSET_FOOD_DIR,ASSET_BG_PATH
 from .display_manager import DisplayManager
 from .constants import FONT_PATH
 from .clear_screen import FinishScreen
+import os
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95):
     rng = random.Random(RNG_SEED)
@@ -46,17 +47,21 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         print("Pygame video init failed:", e)
         return
     clock = pygame.time.Clock()
-    pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
-    font = pygame.font.Font(pixel_font_path, 16)
+    font = pygame.font.Font(FONT_PATH, 16)
 # --- Teddy add start---
      # --- 開始畫面（headless 模式會略過） ---
+    selected_level = 1  # default level if menu is skipped
     if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面
         init_menu = InitMenu(
             image_path_1="nanmon/assets/init_menu_1.jpg",
             image_path_2="nanmon/assets/init_menu_2.jpg",
             anim_fps=2.0,  # 每秒 2 張
         )
-        start = init_menu.loop(dm, clock)
+        _menu_res = init_menu.loop(dm, clock)
+        if isinstance(_menu_res, tuple):
+            start, selected_level = _menu_res
+        else:
+            start, selected_level = bool(_menu_res), 1
         if not start:
             pygame.quit()
             return  # 使用者按 ESC 或關閉視窗
@@ -119,6 +124,16 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     fade_finish_time = 0.0
     fade_finish_duration = 0.6
     waiting_clear_space = False
+    # Page turn SFX for transitions
+    page_turn_snd = None
+    try:
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+        pt_path = os.path.join("nanmon", "assets", "sounds", "page_turn.mp3")
+        if os.path.exists(pt_path):
+            page_turn_snd = pygame.mixer.Sound(pt_path)
+    except Exception:
+        page_turn_snd = None
 
     while running:
         dt = clock.tick(FPS) / 1000.0
@@ -145,18 +160,21 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     return "RESTART"
                 if event.key == pygame.K_SPACE and level_cleared:
                     # proceed to finish screen on space
+                    if page_turn_snd:
+                        try:
+                            page_turn_snd.play()
+                        except Exception:
+                            pass
                     waiting_clear_space = False
                     fade_to_finish = True
                     fade_finish_time = 0.0
                 if event.key == pygame.K_F6:
                     # Debug: force S-rank by boosting score and eaten count
-                    try:
-                        target = float(LEVEL_TARGET_SCORE)
-                    except Exception:
-                        target = 100.0
+                    level_cleared = True
                     # Ensure rank S (>= 2x target) and instant clear
-                    score = max(score, target * 2.5)
-                    eaten.total = max(int(eaten.total), int(target * 2.1))
+                    score = 2000
+                    eaten.total = 1
+                    eaten.correct = 1
                     level_cleared = True
                 if event.key == pygame.K_F7:
                     # Debug: instantly clear the level to test finish screen
@@ -206,6 +224,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                             mouth.bite()  # Show bite animation for boss foods
                             try:
                                 eaten.total += 1
+                                eaten.correct += 1
                                 eaten.per_type[proj.kind] += 1
                             except Exception:
                                 # Be robust if a projectile lacks kind or mapping
@@ -260,6 +279,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     if match:
                         score += 1.0
                         eaten.total += 1
+                        eaten.correct += 1
                         eaten.per_type[f.kind] += 1
                         mouth.bite()
                         # Boss weak point damage via correct-eat while target alive and matching mode
@@ -274,6 +294,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                                     boss.register_bite()
                                     mouth.knockback(strength=9000.0)
                     else:
+                        # Count as eaten (wrong) and apply nausea if not invincible
+                        eaten.total += 1
                         if not player_invincible:
                             nausea = min(NAUSEA_MAX, nausea + NAUSEA_WRONG_EAT)
                     foods.remove(f)
@@ -282,8 +304,6 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             if boss is not None and boss.dead:
                 level_cleared = True
 
-            if score >= LEVEL_TARGET_SCORE:
-                level_cleared = True
             if nausea >= NAUSEA_MAX and not player_invincible:
                 if not game_over:
                     # trigger player death animation and shake once
@@ -353,7 +373,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         if level_cleared:
             # Wait for SPACE to begin transition
             if fade_to_finish and fade_finish_time >= fade_finish_duration:
-                fs = FinishScreen(eaten)
+                fs = FinishScreen(eaten, level=selected_level, score=int(score))
                 fs.loop(dm, clock)
                 return "RESTART"
 

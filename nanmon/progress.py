@@ -21,8 +21,7 @@ class Progress:
         self.y = top
 
         # 小字體；你也可改成自訂字體檔
-        pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
-        self.font = pygame.font.Font(pixel_font_path, 18)
+        self.font = pygame.font.Font(FONT_PATH, 18)
         self.label = self.font.render("progrss", True, WHITE)
         # 轉成垂直擺放
         self.label_rot = pygame.transform.rotate(self.label, 90)
