@@ -3,7 +3,7 @@
 from __future__ import annotations
 import os
 import pygame
-from .constants import WIDTH, HEIGHT, BG_COLOR, WHITE, FPS
+from .constants import WIDTH, HEIGHT, BG_COLOR, WHITE, FPS, FONT_PATH
 
 class InitMenu:
     """
@@ -28,9 +28,13 @@ class InitMenu:
         self.running = True
         self.start_game = False
 
-        # 用與遊戲一致的字型風格（目前 game.py 以 Font(None, 18) 為主）
-        self.font_title = pygame.font.Font(None, 48)
-        self.font_hint  = pygame.font.Font(None, 28)
+        # 用專案字型 Munro TTF
+        try:
+            self.font_title = pygame.font.Font(FONT_PATH, 48)
+            self.font_hint  = pygame.font.Font(FONT_PATH, 28)
+        except Exception:
+            self.font_title = pygame.font.Font(None, 48)
+            self.font_hint  = pygame.font.Font(None, 28)
 
     def update(self, dt: float):
         self.timer += dt

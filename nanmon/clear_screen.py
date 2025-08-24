@@ -86,12 +86,20 @@ class FinishScreen:
         self._bite_delay_timer = -1.0
         self._bite_duration = 0.06
 
-        # Fonts
-        self.font = pygame.font.Font(None, 28)
-        self.font_small = pygame.font.Font(None, 22)
-        self.font_big = pygame.font.Font(None, 96)
-        self.font_title = pygame.font.Font(None, 48)
-        self.font_list = pygame.font.Font(None, 34)
+        # Fonts (use Munro TTF when available)
+        try:
+            from .constants import FONT_PATH  # local import to avoid cycles at top-level
+            self.font = pygame.font.Font(FONT_PATH, 28)
+            self.font_small = pygame.font.Font(FONT_PATH, 22)
+            self.font_big = pygame.font.Font(FONT_PATH, 96)
+            self.font_title = pygame.font.Font(FONT_PATH, 48)
+            self.font_list = pygame.font.Font(FONT_PATH, 34)
+        except Exception:
+            self.font = pygame.font.Font(None, 28)
+            self.font_small = pygame.font.Font(None, 22)
+            self.font_big = pygame.font.Font(None, 96)
+            self.font_title = pygame.font.Font(None, 48)
+            self.font_list = pygame.font.Font(None, 34)
 
         # Grade reveal state and optional sounds
         self.show_grade = False
@@ -134,11 +142,6 @@ class FinishScreen:
         self._walls_mask: pygame.mask.Mask | None = None   # outline/solid pixels from image
         self._interior_mask: pygame.mask.Mask | None = None  # filled interior computed
         self._active_mask: pygame.mask.Mask | None = None   # mask used for collisions
-
-        # FIX: use walls by default (solid = black opaque pixels)
-        self._mask_mode: str = "walls"  # 'interior' or 'walls'
-        self._show_hitbox_overlay: bool = False            # press 'H' to toggle
-
         # Load media/assets
         self._load_media()
 
@@ -488,17 +491,6 @@ class FinishScreen:
                         return
                     if event.key == pygame.K_SPACE and self.done:
                         return
-                    if event.key == pygame.K_h:
-                        # Toggle debug overlay for container hitbox image
-                        self._show_hitbox_overlay = not self._show_hitbox_overlay
-                    if event.key == pygame.K_m:
-                        # Toggle mask mode between interior and walls (for debugging)
-                        if self._mask_mode == "interior":
-                            self._mask_mode = "walls"
-                            self._active_mask = self._walls_mask
-                        else:
-                            self._mask_mode = "interior"
-                            self._active_mask = self._interior_mask or self._walls_mask
 
             keys = pygame.key.get_pressed()
             self.mouth.update(dt, keys)
@@ -627,19 +619,6 @@ class FinishScreen:
                 plate_y = HEIGHT - self._plate_h
                 surf.blit(self._plate_img, (0, plate_y))
 
-            # Debug: draw semi-transparent container hitbox overlay if toggled
-            if self._show_hitbox_overlay and self._container_img is not None and self._container_rect is not None:
-                overlay = self._container_img.copy()
-                overlay.set_alpha(110)
-                surf.blit(overlay, self._container_rect)
-                # Also draw active mask visualization (green tint) to show what physics sees
-                if self._active_mask is not None:
-                    mw, mh = self._active_mask.get_size()
-                    try:
-                        viz = self._active_mask.to_surface(setcolor=(0, 255, 0, 120), unsetcolor=(0, 0, 0, 0))
-                        surf.blit(viz, self._container_rect)
-                    except Exception:
-                        pass
 
             # Draw scoreboard at the very top
             content_y0 = 50
@@ -661,7 +640,7 @@ class FinishScreen:
                     else:
                         img = base
                     rect = img.get_rect()
-                    rect.topright = (WIDTH, 50)
+                    rect.topright = (WIDTH - 10, 80)
                     jx = jy = 0
                     if self._impact_jitter_time > 0.0:
                         self._impact_jitter_time = max(0.0, self._impact_jitter_time - (1/60))
@@ -700,6 +679,8 @@ class FinishScreen:
             y = start_y
             x = 50
             col_wrapped = False
+            bottom_left = start_y
+            bottom_right = start_y
             for k in KINDS:
                 if self.eaten.per_type.get(k, 0) <= 0:
                     continue
@@ -710,9 +691,17 @@ class FinishScreen:
                     y = start_y
                 self._draw_text_outlined(surf, self.font_list, line, (x, y))
                 y += max(28, self.font_list.get_linesize())
+                if not col_wrapped:
+                    bottom_left = y
+                else:
+                    bottom_right = y
 
+            # Blink the continue prompt every second, placed just below the food list
             if self.show_grade:
-                self._draw_text_outlined(surf, self.font_small, "Press SPACE to continue", (20, HEIGHT - 28))
+                blink_on = (int(self._reveal_time) % 2) == 0
+                if blink_on:
+                    prompt_y = max(bottom_left, bottom_right) + 12
+                    self._draw_text_outlined(surf, self.font_small, "Press space to continue", (50, prompt_y))
 
             for it in self.settled:
                 surf.blit(it.img, it.rect)

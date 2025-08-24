@@ -1,7 +1,7 @@
 # nanmon/progress.py
 from __future__ import annotations
 import pygame
-from .constants import WIDTH, WHITE
+from .constants import WIDTH, WHITE, FONT_PATH
 
 class Progress:
     """
@@ -19,8 +19,11 @@ class Progress:
         self.x = WIDTH - margin - self.w  # 靠右
         self.y = top
 
-        # 小字體；你也可改成自訂字體檔
-        self.font = pygame.font.Font(None, 18)
+        # 小字體；改用專案字體 Munro TTF
+        try:
+            self.font = pygame.font.Font(FONT_PATH, 18)
+        except Exception:
+            self.font = pygame.font.Font(None, 18)
         self.label = self.font.render("progrss", True, WHITE)
         # 轉成垂直擺放
         self.label_rot = pygame.transform.rotate(self.label, 90)
