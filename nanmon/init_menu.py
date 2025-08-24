@@ -3,7 +3,7 @@
 from __future__ import annotations
 import os
 import pygame
-from .constants import WIDTH, HEIGHT, BG_COLOR, WHITE, FPS
+from .constants import WIDTH, HEIGHT, BG_COLOR, WHITE, FPS, FONT_PATH
 
 class InitMenu:
     """
@@ -29,28 +29,9 @@ class InitMenu:
         self.start_game = False
 
         # 用與遊戲一致的字型風格（目前 game.py 以 Font(None, 18) 為主）
-        pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
-        self.font_title = pygame.font.Font(pixel_font_path, 28)
-        self.font_hint  = pygame.font.Font(pixel_font_path, 16)
+        self.font_title = pygame.font.Font(None, 48)
+        self.font_hint  = pygame.font.Font(None, 28)
 
-        # 加入選單音效
-        self.menu_sound = None
-        self.bg_music_playing = False
-        try:
-            if not pygame.mixer.get_init():
-                pygame.mixer.init()
-            sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
-            if os.path.exists(sound_path):
-                self.menu_sound = pygame.mixer.Sound(sound_path)
-            # 加入背景音樂
-            bg_music_path = os.path.join("nanmon", "assets", "sounds", "init_menu_background_sounds.wav")
-            if os.path.exists(bg_music_path):
-                pygame.mixer.music.load(bg_music_path)
-                pygame.mixer.music.play(-1)
-                self.bg_music_playing = True
-        except Exception:
-            self.menu_sound = None
-            
     def update(self, dt: float):
         self.timer += dt
         if self.timer >= (1.0 / max(0.001, self.anim_fps)):

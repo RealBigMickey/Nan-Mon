@@ -11,6 +11,10 @@ WHITE = pygame.Color(255, 255, 255)
 SALTY_COLOR = pygame.Color("#A7D3FF")
 SWEET_COLOR = pygame.Color("#FF9ECF")
 
+# Fonts
+# Path to project font (Munro TTF)
+FONT_PATH = "nanmon/assets/Pixellari.ttf"
+
 # Gameplay
 LEVEL_TARGET_SCORE = 20
 SPAWN_INTERVAL_MIN = 0.25

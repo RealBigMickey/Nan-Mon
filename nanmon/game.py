@@ -24,6 +24,7 @@ from .background import ScrollingBackground
 from .constants import ASSET_FOOD_DIR,ASSET_BG_PATH 
 #--Teddy add end--
 from .display_manager import DisplayManager
+from .constants import FONT_PATH
 from .clear_screen import FinishScreen
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95):
@@ -45,8 +46,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         print("Pygame video init failed:", e)
         return
     clock = pygame.time.Clock()
-    pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
-    font = pygame.font.Font(pixel_font_path, 16)
+    font = pygame.font.Font(None, 18)
 # --- Teddy add start---
      # --- 開始畫面（headless 模式會略過） ---
     if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面
