@@ -126,10 +126,13 @@ def get_level(n: int) -> LevelConfig:
 
     # Level 2: faster, denser, stronger boss
     if n == 2:
+        sweet_foods = ["BUBBLETEA", "MANGOICE", "TOFUPUDDING"]
+        salty_foods = ["FRIEDCHICKEN", "TAIWANBURGER", "STINKYTOFU"]
+        all_foods = sweet_foods + salty_foods
         return LevelConfig(
             level=2,
             name="Snack Storm",
-            bg_images=[_bg("game_bg1.png"), _bg("game_bg1.png")],
+            bg_images=[_bg("game_bg2.jpg"), _bg("game_bg2.jpg")],
             bg_scroll_speed=55.0,
             music_path=None,
             food_fall_speed_range=(360, 520),
@@ -139,12 +142,18 @@ def get_level(n: int) -> LevelConfig:
             spawn_interval_max=max(0.35, SPAWN_INTERVAL_MAX - 0.1),
             boss_spawn_time=max(6.0, BOSS_SPAWN_TIME - 3.0),
             nausea_wrong_eat=NAUSEA_WRONG_EAT,
+            foods_light=all_foods,
+            foods_homing=all_foods,
             boss=LevelBossConfig(
                 speed_x=BOSS_SPEED_X * 1.1,
                 speed_y=BOSS_SPEED_Y * 1.1,
                 ring_projectiles=BOSS_RING_PROJECTILES + 4,
                 beam_rate=BOSS_BEAM_RATE + 4,
                 bites_to_kill=BOSS_BITES_TO_KILL + 1,
+                ring_foods_salty=salty_foods,
+                ring_foods_sweet=sweet_foods,
+                burst_foods=all_foods,
+                beam_kinds=all_foods,
             ),
         )
 

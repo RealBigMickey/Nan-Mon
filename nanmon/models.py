@@ -2,7 +2,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict
 
-KINDS = ["DORITOS", "BURGERS", "FRIES", "ICECREAM", "SODA", "CAKE"]
+KINDS = [
+    "DORITOS", "BURGERS", "FRIES", "ICECREAM", "SODA", "CAKE",
+    "BUBBLETEA", "MANGOICE", "TOFUPUDDING", "FRIEDCHICKEN", "TAIWANBURGER", "STINKYTOFU"
+]
 
 @dataclass
 class EatenCounters:

@@ -20,6 +20,12 @@ FOOD_IMAGE_FILES = {
     "ICECREAM":  "ICECREAM.png",
     "SODA":      "SODA.png",
     "CAKE":      "CAKE.png",
+    "BUBBLETEA": "BUBBLETEA.png",
+    "MANGOICE": "MANGOICE.png",
+    "TOFUPUDDING": "TOFUPUDDING.png",
+    "FRIEDCHICKEN": "FRIEDCHICKEN.png",
+    "TAIWANBURGER": "TAIWANBURGER.png",
+    "STINKYTOFU": "STINKYTOFU.png",
 }
 
 def _load_food_image(kind: str) -> pygame.Surface | None:
