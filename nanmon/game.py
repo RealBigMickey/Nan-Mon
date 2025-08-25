@@ -188,6 +188,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     if mouth.rect.colliderect(proj.rect):
                         match = (mouth.mode == proj.category)
                         mouth.flash(match)
+                        if eat_sound:
+                            eat_sound.play()
                         if match:
                             # Count boss foods toward eaten totals when correctly matched
                             mouth.bite()  # Show bite animation for boss foods
