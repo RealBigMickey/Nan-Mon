@@ -3,7 +3,7 @@ import os
 import random
 import math
 import pygame
-from .constants import WIDTH, HEIGHT, ASSET_FOOD_DIR, FOOD_SIZE, LEVEL_TARGET_SCORE
+from .constants import WIDTH, HEIGHT, ASSET_FOOD_DIR, FOOD_SIZE, FONT_PATH
 from .effects import Smoke
 from .models import KINDS, EatenCounters
 from .mouth import Mouth
@@ -30,19 +30,22 @@ class SpewItem:
         self.r = float(r)
         self.rect = img.get_rect(center=(int(cx), int(cy)))
         self.asleep = False
+        self._final_grade: str | None = None
 
     def update_rect(self) -> None:
         self.rect = self.img.get_rect(center=(int(self.cx), int(self.cy)))
 
 
 class FinishScreen:
-    def __init__(self, eaten: EatenCounters):
+    def __init__(self, eaten: EatenCounters, level: int, score: int):
+        # Store level, score, and eaten stats (including correct count)
+        self.level = level
         self.eaten = eaten
-        # Vertical offset to move finish-screen mouth and food animations upward
+        self.score = score
         self._y_offset = 60
 
         # Scrolling background setup
-        self._bg_img: pygame.Surface | None = None
+        self._bg_img = None
         self._bg_h = 0
         self._bg_y = 0.0
         self._bg_speed = 60.0
@@ -55,7 +58,7 @@ class FinishScreen:
         self.done = (sum(self.counts.values()) == 0)
 
         # Load food images (nearest-neighbor)
-        self.food_imgs: dict[str, pygame.Surface] = {}
+        self.food_imgs = {}
         for k in KINDS:
             path = os.path.join(ASSET_FOOD_DIR, f"{k}.png")
             try:
@@ -71,8 +74,8 @@ class FinishScreen:
         self.mouth_scale = 3.5
 
         # Collections
-        self.flying: list[SpewItem] = []
-        self.settled: list[SpewItem] = []
+        self.flying = []
+        self.settled = []
 
         # Pile region and cadence
         self.pile_left = 20
@@ -85,56 +88,58 @@ class FinishScreen:
         self.spew_count = 0
         self._bite_delay_timer = -1.0
         self._bite_duration = 0.06
+        # Initial delay before any spew begins
+        self._spew_delay = 1.0
 
         # Fonts
-        pixel_font_path = os.path.join("nanmon", "assets", "Pixel Emulator.otf")
-        self.font = pygame.font.Font(pixel_font_path, 28)
-        self.font_small = pygame.font.Font(pixel_font_path, 22)
-        self.font_big = pygame.font.Font(pixel_font_path, 96)
-        self.font_title = pygame.font.Font(pixel_font_path, 48)
-        self.font_list = pygame.font.Font(pixel_font_path, 34)
+        self.font = pygame.font.Font(FONT_PATH, 28)
+        self.font_small = pygame.font.Font(FONT_PATH, 22)
+        self.font_big = pygame.font.Font(FONT_PATH, 96)
+        self.font_title = pygame.font.Font(FONT_PATH, 48)
+        self.font_list = pygame.font.Font(FONT_PATH, 34)
 
         # Grade reveal state and optional sounds
         self.show_grade = False
         self.grade_reveal_started = False
         self.grade_reveal_timer = 0.0
-        self._drum_snd: pygame.mixer.Sound | None = None
+        self._drum_snd = None
         self._drum_chan = None
+        self._pop_snd = None
         # Celebration state
         self._reveal_time = 0.0
-        self._confetti: list[dict] = []
+        self._confetti = []
         self._confetti_trickle = 0.0
         self._confetti_accum = 0.0
-        self._cheer_snd: pygame.mixer.Sound | None = None
+        self._cheer_snd = None
         self._cheer_chan = None
-        self._spray_snd: pygame.mixer.Sound | None = None
-        self._smoke: list[Smoke] = []
+        self._spray_snd = None
+        self._smoke = []
         self._flash_time = 0.0
         self._impact_jitter_time = 0.0
         self._impact_jitter_mag = 0.0
 
         # Rank images (S, A, B, C, D, F)
-        self._rank_imgs: dict[str, pygame.Surface] = {}
+        self._rank_imgs = {}
         self._rank_base_h = int(HEIGHT * 0.24)
 
         # Clapping sprite (shown for ranks A and S)
-        self._clap_img: pygame.Surface | None = None
+        self._clap_img = None
         self._clap_phase = 0.0
         self._need_smoke_spawn = False
 
         # Optional images (scoreboard, plate)
-        self._scoreboard_img: pygame.Surface | None = None
+        self._scoreboard_img = None
         self._scoreboard_h = 0
-        self._plate_img: pygame.Surface | None = None
+        self._plate_img = None
         self._plate_h = 0
 
         # Optional container hitbox (not drawn)
-        self._container_mask: pygame.mask.Mask | None = None
-        self._container_rect: pygame.Rect | None = None
-        self._container_img: pygame.Surface | None = None  # original image
-        self._walls_mask: pygame.mask.Mask | None = None   # outline/solid pixels from image
-        self._interior_mask: pygame.mask.Mask | None = None  # filled interior computed
-        self._active_mask: pygame.mask.Mask | None = None   # mask used for collisions
+        self._container_mask = None
+        self._container_rect = None
+        self._container_img = None  # original image
+        self._walls_mask = None   # outline/solid pixels from image
+        self._interior_mask = None  # filled interior computed
+        self._active_mask = None   # mask used for collisions
         # Load media/assets
         self._load_media()
 
@@ -144,7 +149,7 @@ class FinishScreen:
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
-            for name, attr in (("drumroll.ogg", "_drum_snd"), ("cheer.ogg", "_cheer_snd"), ("spray.ogg", "_spray_snd")):
+            for name, attr in (("drumroll.ogg", "_drum_snd"), ("cheer.ogg", "_cheer_snd"), ("spray.ogg", "_spray_snd"), ("pop.ogg", "_pop_snd"), ("pop.wav", "_pop_snd")):
                 p = os.path.join("nanmon", "assets", name)
                 if os.path.exists(p):
                     setattr(self, attr, pygame.mixer.Sound(p))
@@ -435,6 +440,12 @@ class FinishScreen:
         vx = (tx - x0) / T + random.uniform(-12, 10)
         vy = (ty - y0 - 0.5 * GRAVITY * T * T) / T + random.uniform(-10, 2)
         self.flying.append(SpewItem(kind, img, x0, y0, vx, vy))
+        # Play pop sound on spawn (if available)
+        if self._pop_snd is not None:
+            try:
+                self._pop_snd.play()
+            except Exception:
+                pass
 
     def _next_spew(self) -> None:
         if self.done:
@@ -456,23 +467,47 @@ class FinishScreen:
             self.current_idx += 1
 
     def _grade_letter(self) -> str:
-        total = max(0, int(self.eaten.total))
-        target = max(1, int(LEVEL_TARGET_SCORE))
-        ratio = total / target
-        if ratio >= 2.0:
+        base = 100
+        level = self.level
+        # different levels have different requirements for ranks
+        if level == 1:
+            base = 23
+        elif level == 2:
+            base = 30
+        elif level == 3:
+            base = 40
+
+        final_score = self.score * math.sqrt(self.eaten.correct / self.eaten.total)
+        print(f"Base: {base}, level: {level}, score: {self.score}({self.eaten.correct}/{self.eaten.total}), final score: {final_score}")
+
+        if final_score >= 2.0 * base:
             return "S"
-        if ratio >= 1.5:
+        if final_score >= 1.5 * base:
             return "A"
-        if ratio >= 1.2:
+        if final_score >= 1.2 * base:
             return "B"
-        if ratio >= 1.0:
+        if final_score >= 1.0 * base:
             return "C"
-        if ratio >= 0.8:
+        if final_score >= 0.8 * base:
             return "D"
         return "F"
 
     def loop(self, dm, clock) -> None:
         running = True
+        # Fade-in from white for the result screen
+        fade_in_t = 0.0
+        fade_in_dur = 0.5
+        # Transition sound
+        turn_snd = None
+        letter = None
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            pt_path = os.path.join("nanmon", "assets", "sounds", "page_turn.mp3")
+            if os.path.exists(pt_path):
+                turn_snd = pygame.mixer.Sound(pt_path)
+        except Exception:
+            turn_snd = None
         fixed_mouth_pos = (int(WIDTH * 0.82), int(HEIGHT * 0.72) - self._y_offset)
         while running:
             dt = clock.tick(60) / 1000.0
@@ -483,22 +518,28 @@ class FinishScreen:
                     if event.key == pygame.K_ESCAPE:
                         # 播放選單音效
                         try:
-                            if not pygame.mixer.get_init():
-                                pygame.mixer.init()
-                            sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
-                            if os.path.exists(sound_path):
-                                pygame.mixer.Sound(sound_path).play()
+                            if turn_snd:
+                                turn_snd.play()
+                            else:
+                                if not pygame.mixer.get_init():
+                                    pygame.mixer.init()
+                                sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
+                                if os.path.exists(sound_path):
+                                    pygame.mixer.Sound(sound_path).play()
                         except Exception:
                             pass
                         return
                     if event.key == pygame.K_SPACE and self.done:
                         # 播放選單音效
                         try:
-                            if not pygame.mixer.get_init():
-                                pygame.mixer.init()
-                            sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
-                            if os.path.exists(sound_path):
-                                pygame.mixer.Sound(sound_path).play()
+                            if turn_snd:
+                                turn_snd.play()
+                            else:
+                                if not pygame.mixer.get_init():
+                                    pygame.mixer.init()
+                                sound_path = os.path.join("nanmon", "assets", "sounds", "menu_select_sounds.ogg")
+                                if os.path.exists(sound_path):
+                                    pygame.mixer.Sound(sound_path).play()
                         except Exception:
                             pass
                         return
@@ -516,15 +557,19 @@ class FinishScreen:
                     self._bite_delay_timer = -1.0
 
             if not self.done:
-                self.spew_timer += dt
-                while True:
-                    progress = min(1.0, self.spew_count / float(max(1, self.spew_accel_count)))
-                    current_interval = self.spew_start_interval + (self.spew_end_interval - self.spew_start_interval) * progress
-                    if self.spew_timer < current_interval:
-                        break
-                    self.spew_timer -= current_interval
-                    self._next_spew()
-                    self.spew_count += 1
+                # Respect initial delay before starting spew cadence
+                if self._spew_delay > 0.0:
+                    self._spew_delay = max(0.0, self._spew_delay - dt)
+                else:
+                    self.spew_timer += dt
+                    while True:
+                        progress = min(1.0, self.spew_count / float(max(1, self.spew_accel_count)))
+                        current_interval = self.spew_start_interval + (self.spew_end_interval - self.spew_start_interval) * progress
+                        if self.spew_timer < current_interval:
+                            break
+                        self.spew_timer -= current_interval
+                        self._next_spew()
+                        self.spew_count += 1
             else:
                 if not self.grade_reveal_started:
                     self.grade_reveal_started = True
@@ -539,18 +584,32 @@ class FinishScreen:
                     if self.grade_reveal_timer <= 0.0:
                         self.show_grade = True
                         self._reveal_time = 0.0
-                        self._spawn_confetti(burst=360)
-                        self._confetti_trickle = 1.6
+
+                        # decide and cache final grade exactly once
+                        self._final_grade = self._grade_letter()
+
+                        # graffiti/confetti only if not F
+                        if self._final_grade != 'F':
+                            self._spawn_confetti(burst=500)
+                            self._confetti_trickle = 1.6
+                        else:
+                            self._confetti_trickle = 0.0
                         self._confetti_accum = 0.0
+
+                        # impact effects (keep or gate as you like)
                         self._flash_time = 0.16
                         self._impact_jitter_time = 0.42
                         self._impact_jitter_mag = 9.0
-                        self._need_smoke_spawn = True
+
+                        # smoke burst only for non-F
+                        self._need_smoke_spawn = (self._final_grade != 'F')
+
                         try:
                             if self._drum_chan is not None:
                                 self._drum_chan.stop()
                         except Exception:
                             pass
+
 
             if self.show_grade:
                 self._reveal_time += dt
@@ -640,8 +699,9 @@ class FinishScreen:
             self._draw_text_outlined(surf, self.font_title, "Result: ", (65, content_y0))
 
             if self.show_grade:
-                letter = self._grade_letter()
+                letter = self._final_grade or self._grade_letter()
                 base = self._rank_imgs.get(letter)
+
                 if base is not None:
                     pop = 1.0 + max(0.0, 0.28 - self._reveal_time) * 3.2
                     if pop != 1.0:
@@ -727,8 +787,8 @@ class FinishScreen:
             surf.blit(large, mouth_draw_rect)
 
             if self.show_grade:
-                letter = self._grade_letter()
-                if (letter in ('A', 'S')) and (self._clap_img is not None):
+                letter = self._final_grade or self._grade_letter()
+                if (letter in ("A", "S")) and (self._clap_img is not None):
                     self._clap_phase += dt
                     freq = 2.6
                     s = math.sin(self._clap_phase * 2 * math.pi * freq)
@@ -741,6 +801,16 @@ class FinishScreen:
                     clap_rect = self._clap_img.get_rect()
                     clap_rect.midbottom = (WIDTH // 2, bottom_y)
                     surf.blit(self._clap_img, clap_rect)
+
+            # Fade-in overlay
+            if fade_in_t < fade_in_dur:
+                fade_in_t = min(fade_in_dur, fade_in_t + dt)
+                t = fade_in_t / max(0.001, fade_in_dur)
+                alpha = int(255 * (1.0 - t))
+                if alpha > 0:
+                    white = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                    white.fill((255, 255, 255, alpha))
+                    surf.blit(white, (0, 0))
 
             dm.present()
             # end of frame

@@ -1,6 +1,6 @@
 from __future__ import annotations
 import pygame
-from .constants import WIDTH, HEIGHT, WHITE, BG_COLOR, NAUSEA_MAX, SALTY_COLOR, SWEET_COLOR
+from .constants import WIDTH, HEIGHT, WHITE, BG_COLOR, NAUSEA_MAX, SALTY_COLOR, SWEET_COLOR, FONT_PATH
 from .mouth import Mouth
 from .models import EatenCounters
 
@@ -44,15 +44,14 @@ def draw_hud(surface: pygame.Surface, font: pygame.font.Font, mouth: Mouth, naus
         legend_surf = legend_font.render(legend, True, WHITE)
         while legend_surf.get_width() > WIDTH - 40 and font_size > 8:
             font_size -= 2
-            pixel_font_path = getattr(font, 'path', None) or "nanmon/assets/Pixel Emulator.otf"
-            legend_font = pygame.font.Font(pixel_font_path, font_size)
+            legend_font = pygame.font.Font(FONT_PATH, font_size)
             legend_surf = legend_font.render(legend, True, WHITE)
         legend_surf.set_alpha(legend_alpha)
         surface.blit(legend_surf, (WIDTH//2 - legend_surf.get_width()//2, 10 + txt.get_height() + 4))
 
     if level_cleared:
-        msg = font.render("LEVEL CLEARED – Press SPACE to restart", True, WHITE)
+        msg = font.render("LEVEL CLEARED!", True, WHITE)
         surface.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2 - 30))
     elif game_over:
-        msg = font.render("GAME OVER – Press SPACE to restart", True, WHITE)
+        msg = font.render("GAME OVER!", True, WHITE)
         surface.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2 - 30))

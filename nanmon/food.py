@@ -11,6 +11,7 @@ from .constants import (
     HOMING_RANGE_SCALE, HOMING_MAX_VX,
     ASSET_FOOD_DIR, FOOD_SIZE,   # 👈 新增
 )
+from .levels import LevelConfig
 
 FOOD_IMAGE_FILES = {
     "DORITOS":   "DORITOS.png",
@@ -99,15 +100,28 @@ class Food(pygame.sprite.Sprite):
     def draw(self, surface: pygame.Surface):
         surface.blit(self.image, self.rect)
 
-def make_food(rng: random.Random) -> Food:
-    from .constants import HOMING_FRACTION
-    homing_choice = rng.random() < HOMING_FRACTION
-    if homing_choice:
-        kind = rng.choice(["BURGERS", "CAKE"])
+def make_food(rng: random.Random, level_cfg: LevelConfig | None = None) -> Food:
+    if level_cfg is None:
+        from .constants import HOMING_FRACTION
+        homing_choice = rng.random() < HOMING_FRACTION
+        if homing_choice:
+            kind = rng.choice(["BURGERS", "CAKE"])
+        else:
+            kind = rng.choice(["DORITOS", "FRIES", "ICECREAM", "SODA"])
+        category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
+        speed_y = rng.uniform(*FOOD_FALL_SPEED_RANGE)
+        x = rng.randint(20, WIDTH-20)
+        homing = (kind in ("BURGERS", "CAKE"))
+        return Food(kind, category, x, speed_y, homing)
     else:
-        kind = rng.choice(["DORITOS", "FRIES", "ICECREAM", "SODA"])
-    category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
-    speed_y = rng.uniform(*FOOD_FALL_SPEED_RANGE)
-    x = rng.randint(20, WIDTH-20)
-    homing = (kind in ("BURGERS", "CAKE"))
-    return Food(kind, category, x, speed_y, homing)
+        homing_choice = rng.random() < level_cfg.homing_fraction
+        if homing_choice and level_cfg.foods_homing:
+            kind = rng.choice(level_cfg.foods_homing)
+        else:
+            pool = level_cfg.foods_light or ["DORITOS", "FRIES", "ICECREAM", "SODA"]
+            kind = rng.choice(pool)
+        category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
+        speed_y = rng.uniform(*level_cfg.food_fall_speed_range)
+        x = rng.randint(20, WIDTH-20)
+        homing = (kind in tuple(level_cfg.foods_homing))
+        return Food(kind, category, x, speed_y, homing)

@@ -11,25 +11,23 @@ WHITE = pygame.Color(255, 255, 255)
 SALTY_COLOR = pygame.Color("#A7D3FF")
 SWEET_COLOR = pygame.Color("#FF9ECF")
 
-# Fonts
-# Path to project font (Munro TTF)
-FONT_PATH = "nanmon/assets/Pixellari.ttf"
+# Font
+FONT_PATH = "nanmon/assets/Pixel Emulator.otf"
 
 # Gameplay
-LEVEL_TARGET_SCORE = 20
 SPAWN_INTERVAL_MIN = 0.25
 SPAWN_INTERVAL_MAX = 0.55
 MAX_ONSCREEN_FOOD = 30
 HOMING_FRACTION = 0.35
-HOMING_STRENGTH_WEAK = 0.6
-HOMING_STRENGTH_STRONG = 1.2
+HOMING_STRENGTH_WEAK = 0.7
+HOMING_STRENGTH_STRONG = 1.35
 HOMING_RANGE_SCALE = 900.0
 HOMING_MAX_VX = 260
 
 # Nausea
-NAUSEA_MAX = 260
+NAUSEA_MAX = 160
 NAUSEA_WRONG_EAT = 20
-NAUSEA_DECAY_PER_SEC = 2.0
+NAUSEA_DECAY_PER_SEC = 3.0
 
 # Player
 # Horizontal is snappy; vertical uses a spring toward a target moved by keys
@@ -95,7 +93,7 @@ BOSS_HIT_FLASH_TIME = 0.18
 BOSS_BITES_TO_KILL = 4
 
 # When to spawn the boss (seconds); used by Progress bar
-BOSS_SPAWN_TIME = 5.0
+BOSS_SPAWN_TIME = 15.0
 
 # Target visuals that may appear on boss (optional for now)
 TARGET_SIZE = (44, 44)

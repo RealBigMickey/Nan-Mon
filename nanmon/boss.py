@@ -1,4 +1,6 @@
-"""Boss entity: always visible, emits sequential double rings, has a weak point target."""
+"""Boss entity: always visible, emits sequential double rings, has a weak point target.
+Level-aware: accepts an optional LevelConfig to tweak visuals, movement, attacks, and health.
+"""
 
 from __future__ import annotations
 
@@ -35,22 +37,33 @@ from .constants import (
 from .food import Food
 from .target import Target
 from .effects import Smoke
+from .levels import LevelConfig
 
 
 class Boss(pygame.sprite.Sprite):
-    def __init__(self):
+    def __init__(self, level_cfg: LevelConfig | None = None):
         super().__init__()
+        self._lvl = level_cfg
+
+        # Visuals
+        img_path = ASSET_BOSS_IMAGE
+        size = BOSS_SIZE
+        if self._lvl:
+            b = self._lvl.boss
+            if b.image_path:
+                img_path = b.image_path
+            size = b.size
         try:
-            raw = pygame.image.load(ASSET_BOSS_IMAGE).convert_alpha()
-            self.image = pygame.transform.smoothscale(raw, BOSS_SIZE)
+            raw = pygame.image.load(img_path).convert_alpha()
+            self.image = pygame.transform.smoothscale(raw, size)
         except Exception:
-            self.image = pygame.Surface(BOSS_SIZE, pygame.SRCALPHA)
+            self.image = pygame.Surface(size, pygame.SRCALPHA)
             pygame.draw.rect(self.image, WHITE, self.image.get_rect(), 2)
 
         # Start off-screen for spawn animation
-        self.rect = self.image.get_rect(midtop=(WIDTH // 2, -BOSS_SIZE[1]))
-        self.vx = BOSS_SPEED_X
-        self.vy = BOSS_SPEED_Y
+        self.rect = self.image.get_rect(midtop=(WIDTH // 2, -size[1]))
+        self.vx = (self._lvl.boss.speed_x if self._lvl else BOSS_SPEED_X)
+        self.vy = (self._lvl.boss.speed_y if self._lvl else BOSS_SPEED_Y)
         self.left_bound = 40
         self.right_bound = WIDTH - 40
         self.shoot_cd = 0.0
@@ -58,17 +71,18 @@ class Boss(pygame.sprite.Sprite):
 
         # Spawn state then active
         self.spawning = True
-        self.spawn_timer = BOSS_SPAWN_DURATION
-        self.spawn_total = BOSS_SPAWN_DURATION
-        self.target_y = BOSS_Y
+        self.spawn_timer = (self._lvl.boss.spawn_duration if self._lvl else BOSS_SPAWN_DURATION)
+        self.spawn_total = self.spawn_timer
+        self.target_y = (self._lvl.boss.y_target if self._lvl else BOSS_Y)
         self.active = False
 
         # Ring attack cadence
-        self.ring_cd = BOSS_RING_INTERVAL * 0.5
-        self._second_ring_pending = None
+        base_ring = (self._lvl.boss.ring_interval if self._lvl else BOSS_RING_INTERVAL)
+        self.ring_cd = base_ring * 0.5
+        self._second_ring_pending: tuple[str, float] | None = None
 
         # Weak point and state
-        self.target = None
+        self.target: Target | None = None
         self.target_cd = 0.4
         self.bites = 0
         self.dead = False
@@ -78,14 +92,14 @@ class Boss(pygame.sprite.Sprite):
         # Beam attack state
         self.beam_cd = 0.0
         self.beam_timer = 0.0
-        self.beam_kind = None  # "DORITOS" or "SODA"
+        self.beam_kind: str | None = None  # "DORITOS" or "SODA"
         self.beam_emit_accum = 0.0
 
         # death animation
         self.dying = False
         self.death_timer = 0.0
         self._smoke_cd = 0.0
-        self._smoke = []
+        self._smoke: list[Smoke] = []
         # continuous fume while alive scales with damage
         self.fume_cd = 0.0
 
@@ -158,11 +172,13 @@ class Boss(pygame.sprite.Sprite):
             self.rect.right = self.right_bound
             self.vx = -abs(self.vx)
         self.rect.y += int(self.vy * dt)
-        if self.rect.top < BOSS_Y_TOP:
-            self.rect.top = BOSS_Y_TOP
+        y_top = (self._lvl.boss.y_top if self._lvl else BOSS_Y_TOP)
+        y_bottom = (self._lvl.boss.y_bottom if self._lvl else BOSS_Y_BOTTOM)
+        if self.rect.top < y_top:
+            self.rect.top = y_top
             self.vy = abs(self.vy)
-        elif self.rect.bottom > BOSS_Y_BOTTOM:
-            self.rect.bottom = BOSS_Y_BOTTOM
+        elif self.rect.bottom > y_bottom:
+            self.rect.bottom = y_bottom
             self.vy = -abs(self.vy)
 
         # Update existing smoke puffs even while alive
@@ -172,7 +188,8 @@ class Boss(pygame.sprite.Sprite):
                 self._smoke.remove(s)
 
         # Emit fume that ramps up as boss takes hits
-        damage_ratio = min(1.0, self.bites / max(1, BOSS_BITES_TO_KILL))
+        bites_to_kill = (self._lvl.boss.bites_to_kill if self._lvl else BOSS_BITES_TO_KILL)
+        damage_ratio = min(1.0, self.bites / max(1, bites_to_kill))
         fume_interval = max(0.18, 1.2 - 0.9 * damage_ratio)
         self.fume_cd -= dt
         if self.fume_cd <= 0.0 and not self.dying and self.active:
@@ -185,9 +202,11 @@ class Boss(pygame.sprite.Sprite):
 
         # Scale attack cadence based on remaining health:
         # start quite long at full health, shorten as damage accumulates
-        health_ratio = max(0.0, 1.0 - (self.bites / max(1, BOSS_BITES_TO_KILL)))
-        ring_interval = max(1.8, BOSS_RING_INTERVAL * (0.6 + 0.9 * health_ratio))
-        beam_interval = max(2.5, BOSS_BEAM_INTERVAL * (0.7 + 1.0 * health_ratio))
+        health_ratio = max(0.0, 1.0 - (self.bites / max(1, bites_to_kill)))
+        ring_base = (self._lvl.boss.ring_interval if self._lvl else BOSS_RING_INTERVAL)
+        beam_base = (self._lvl.boss.beam_interval if self._lvl else BOSS_BEAM_INTERVAL)
+        ring_interval = max(1.8, ring_base * (0.6 + 0.9 * health_ratio))
+        beam_interval = max(2.5, beam_base * (0.7 + 1.0 * health_ratio))
 
         # Rings: sequential pair
         self.ring_cd -= dt
@@ -203,24 +222,27 @@ class Boss(pygame.sprite.Sprite):
             first = random.choice(["SALTY", "SWEET"])
             second = "SWEET" if first == "SALTY" else "SALTY"
             self.spawn_ring(first)
-            self._second_ring_pending = (second, BOSS_RING_PAIR_GAP)
+            gap = (self._lvl.boss.ring_pair_gap if self._lvl else BOSS_RING_PAIR_GAP)
+            self._second_ring_pending = (second, gap)
             self.ring_cd = ring_interval
 
         # Downward burst
         self.shoot_cd -= dt
         if self.shoot_cd <= 0.0:
             self.shoot_food_burst()
-            self.shoot_cd = BOSS_SHOT_INTERVAL
+            self.shoot_cd = (self._lvl.boss.shot_interval if self._lvl else BOSS_SHOT_INTERVAL)
 
         # Beam attack: sustained stream of one kind towards player (all Doritos or all Soda)
         self.beam_cd -= dt
         if self.beam_timer > 0.0:
             self.beam_timer = max(0.0, self.beam_timer - dt)
             # Emit foods at a steady rate
-            self.beam_emit_accum += BOSS_BEAM_RATE * dt
+            rate = (self._lvl.boss.beam_rate if self._lvl else BOSS_BEAM_RATE)
+            self.beam_emit_accum += rate * dt
             while self.beam_emit_accum >= 1.0:
                 self.beam_emit_accum -= 1.0
-                kind = self.beam_kind or random.choice(["DORITOS", "SODA"])
+                kinds = (self._lvl.boss.beam_kinds if self._lvl else ["DORITOS", "SODA"])
+                kind = self.beam_kind or random.choice(kinds)
                 category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
                 # Aim horizontally at player if provided
                 px = player_pos[0] if player_pos is not None else self.rect.centerx
@@ -229,7 +251,7 @@ class Boss(pygame.sprite.Sprite):
                     kind,
                     category,
                     x,
-                    speed_y=BOSS_BEAM_SPEED,
+                    speed_y=(self._lvl.boss.beam_speed if self._lvl else BOSS_BEAM_SPEED),
                     homing=False,
                     spawn_center_y=self.rect.bottom,
                 )
@@ -238,8 +260,9 @@ class Boss(pygame.sprite.Sprite):
                 self.projectiles.add(f)
         elif self.beam_cd <= 0.0:
             # Start a new beam
-            self.beam_kind = random.choice(["DORITOS", "SODA"])  # all same kind
-            self.beam_timer = BOSS_BEAM_DURATION
+            kinds = (self._lvl.boss.beam_kinds if self._lvl else ["DORITOS", "SODA"])  # all same kind
+            self.beam_kind = random.choice(kinds)
+            self.beam_timer = (self._lvl.boss.beam_duration if self._lvl else BOSS_BEAM_DURATION)
             self.beam_emit_accum = 0.0
             self.beam_cd = beam_interval
 
@@ -266,14 +289,15 @@ class Boss(pygame.sprite.Sprite):
                 self.target_cd = TARGET_RESPAWN_BASE
 
     def shoot_food_burst(self):
+        foods = (self._lvl.boss.burst_foods if self._lvl else ["DORITOS", "FRIES", "SODA", "ICECREAM"])  # light burst
         for _ in range(2):
-            kind = random.choice(["DORITOS", "FRIES", "SODA", "ICECREAM"])  # light burst
+            kind = random.choice(foods)
             category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
             f = Food(
                 kind,
                 category,
                 self.rect.centerx + random.randint(-40, 40),
-                speed_y=BOSS_FOOD_SPEED,
+                speed_y=(self._lvl.boss.food_speed if self._lvl else BOSS_FOOD_SPEED),
                 homing=False,
                 spawn_center_y=self.rect.centery,
             )
@@ -282,18 +306,21 @@ class Boss(pygame.sprite.Sprite):
 
     def spawn_ring(self, category: str):
         cx, cy = self.rect.center
-        n = BOSS_RING_PROJECTILES
+        n = (self._lvl.boss.ring_projectiles if self._lvl else BOSS_RING_PROJECTILES)
         speed = 260.0
         # Rings contain random foods of the same category
-        kinds = (
-            "DORITOS",
-            "FRIES",
-            "BURGERS",
-        ) if category == "SALTY" else (
-            "ICECREAM",
-            "SODA",
-            "CAKE",
-        )
+        if self._lvl:
+            kinds = self._lvl.boss.ring_foods_salty if category == "SALTY" else self._lvl.boss.ring_foods_sweet
+        else:
+            kinds = (
+                "DORITOS",
+                "FRIES",
+                "BURGERS",
+            ) if category == "SALTY" else (
+                "ICECREAM",
+                "SODA",
+                "CAKE",
+            )
         for i in range(n):
             ang = 2 * math.pi * (i / n)
             vx = math.cos(ang) * speed
@@ -312,7 +339,8 @@ class Boss(pygame.sprite.Sprite):
             self.target.alive = False
             self.target = None
             self.target_cd = TARGET_RESPAWN_AFTER_BITE
-        if self.bites >= BOSS_BITES_TO_KILL:
+        thresh = (self._lvl.boss.bites_to_kill if self._lvl else BOSS_BITES_TO_KILL)
+        if self.bites >= thresh:
             # start death animation instead of instant death
             self.dying = True
             self.death_timer = 2.2
@@ -323,8 +351,9 @@ class Boss(pygame.sprite.Sprite):
             return
         draw_rect = self.rect.copy()
         # Progressive jitter/red tint as health drops
-        bites = min(self.bites, BOSS_BITES_TO_KILL)
-        health_ratio = max(0.0, 1.0 - (bites / max(1, BOSS_BITES_TO_KILL)))
+        thresh = (self._lvl.boss.bites_to_kill if self._lvl else BOSS_BITES_TO_KILL)
+        bites = min(self.bites, thresh)
+        health_ratio = max(0.0, 1.0 - (bites / max(1, thresh)))
         base_jitter = int((1.0 - health_ratio) * 3)
         if self.hit_flash > 0:
             jitter = base_jitter + 2
