@@ -23,7 +23,7 @@ class ScrollingBackground:
         for path in image_paths:
             try:
                 img = pygame.image.load(path).convert_alpha()
-                img = pygame.transform.smoothscale(img, (self.w, self.h))
+                img = pygame.transform.scale(img, (self.w, self.h))
                 self.images.append(img)
             except Exception:
                 self.images.append(None)

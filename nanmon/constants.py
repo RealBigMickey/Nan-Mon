@@ -52,6 +52,8 @@ FLASH_DURATION = 0.15
 ASSET_BG_PATH = "nanmon/assets/bg"
 ASSET_FOOD_DIR = "nanmon/assets/food"
 FOOD_SIZE = (40, 40)
+# Hats directory
+ASSET_HAT_DIR = "nanmon/assets/hats"
 # ---Teddy add---
 
 # --- Boss & Target additions ---

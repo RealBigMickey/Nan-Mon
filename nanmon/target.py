@@ -30,7 +30,7 @@ class Target:
         path = TARGET_IMG_PATHS.get(self.color_key, "")
         if path and os.path.exists(path):
             img = pygame.image.load(path).convert_alpha()
-            img = pygame.transform.smoothscale(img, TARGET_SIZE)
+            img = pygame.transform.scale(img, TARGET_SIZE)
         else:
             img = pygame.Surface(TARGET_SIZE, pygame.SRCALPHA)
             color = (80, 80, 255) if self.color_key == "BLUE" else (255, 80, 180)

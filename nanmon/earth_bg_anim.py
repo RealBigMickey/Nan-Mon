@@ -34,7 +34,7 @@ def draw_earth_bg_anim(surface, anim_state):
         orig_w, orig_h = img_raw.get_width(), img_raw.get_height()
         cur_h = int(orig_h * scale)
         cur_w = int(orig_w * scale)
-        img = pygame.transform.smoothscale(img_raw, (cur_w, cur_h))
+        img = pygame.transform.scale(img_raw, (cur_w, cur_h))
         if not anim_state.get('done'):
             if y < target_y:
                 y = min(target_y, y + speed * dt)

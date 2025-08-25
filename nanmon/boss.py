@@ -63,7 +63,7 @@ class Boss(pygame.sprite.Sprite):
             size = b.size
         try:
             raw = pygame.image.load(img_path).convert_alpha()
-            self.image = pygame.transform.smoothscale(raw, size)
+            self.image = pygame.transform.scale(raw, size)
         except Exception:
             self.image = pygame.Surface(size, pygame.SRCALPHA)
             pygame.draw.rect(self.image, WHITE, self.image.get_rect(), 2)

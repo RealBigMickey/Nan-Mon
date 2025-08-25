@@ -77,6 +77,6 @@ class DisplayManager:
         if self.use_integer_scale:
             scaled = pygame.transform.scale(self.logical, self.dest_rect.size)
         else:
-            scaled = pygame.transform.smoothscale(self.logical, self.dest_rect.size)
+            scaled = pygame.transform.scale(self.logical, self.dest_rect.size)
         self.window.blit(scaled, self.dest_rect.topleft)
         pygame.display.flip()

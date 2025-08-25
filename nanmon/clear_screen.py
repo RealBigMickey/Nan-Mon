@@ -38,7 +38,7 @@ class SpewItem:
 
 class FinishScreen:
     # ...existing code...
-    def __init__(self, eaten: EatenCounters, level: int, score: int):
+    def __init__(self, eaten: EatenCounters, level: int, score: int, hat: str | None = None):
         self._drum_snd = None
         self._spit_out_snd = None
         self._bgm_snd = None
@@ -78,6 +78,11 @@ class FinishScreen:
 
         # Big mouth on right (moved upward)
         self.mouth = Mouth((int(WIDTH * 0.82), int(HEIGHT * 0.72) - self._y_offset))
+        if hat:
+            try:
+                self.mouth.set_hat(hat)
+            except Exception:
+                pass
         self.mouth.facing = "LEFT"
         self.mouth_scale = 3.5
 
@@ -495,7 +500,7 @@ class FinishScreen:
             self.counts[kind] -= 1
             self.shown[kind] += 1
             self._spawn_spew(kind)
-            self.mouth.bite_timer = 0.0
+            self.mouth.bite_timer = 0.045
             break
 
     def _grade_letter(self) -> str:
@@ -508,8 +513,10 @@ class FinishScreen:
             base = 30
         elif level == 3:
             base = 40
-
-        final_score = self.score * math.sqrt(self.eaten.correct / self.eaten.total)
+        if self.eaten.total == 0:
+            final_score = 0
+        else:
+            final_score = self.score * math.sqrt(self.eaten.correct / self.eaten.total)
     # ...existing code...
 
         if final_score >= 2.0 * base:
@@ -851,12 +858,17 @@ class FinishScreen:
             for it in self.flying:
                 surf.blit(it.img, it.rect)
 
-            base_img = self.mouth.image
-            mw = int(base_img.get_width() * self.mouth_scale)
-            mh = int(base_img.get_height() * self.mouth_scale)
-            large = pygame.transform.scale(base_img, (mw, mh))
-            mouth_draw_rect = large.get_rect(center=fixed_mouth_pos)
-            surf.blit(large, mouth_draw_rect)
+            # Draw the mouth (with hat) at larger scale on the right
+            try:
+                self.mouth.draw_scaled(surf, fixed_mouth_pos, scale=self.mouth_scale)
+            except Exception:
+                # Fallback to previous behavior if draw_scaled is unavailable
+                base_img = self.mouth.image
+                mw = int(base_img.get_width() * self.mouth_scale)
+                mh = int(base_img.get_height() * self.mouth_scale)
+                large = pygame.transform.scale(base_img, (mw, mh))
+                mouth_draw_rect = large.get_rect(center=fixed_mouth_pos)
+                surf.blit(large, mouth_draw_rect)
 
             if self.show_grade:
                 letter = self._final_grade or self._grade_letter()

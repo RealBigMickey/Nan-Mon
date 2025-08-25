@@ -19,6 +19,7 @@ from .constants import (
     MOUTH_MAX_SPEED,
     MOUTH_SPEED_X,
     MOUTH_BITE_DURATION,
+    ASSET_HAT_DIR,
 )
 
 class Mouth(pygame.sprite.Sprite):
@@ -42,6 +43,13 @@ class Mouth(pygame.sprite.Sprite):
         self._smoke = []  # list[Smoke]
         # brief control dampening after big impacts to preserve momentum
         self.stagger_timer = 0.0
+        # Hat state
+        self._hat_name = None
+        self._hat_img_left = None
+        self._hat_img_right = None
+        # Hat offsets (relative to mouth center) — tweak these to align manually
+        self._hat_offset_left = (1, -38)   # when facing LEFT
+        self._hat_offset_right = (-38, -38) # when facing RIGHT
 
     def toggle_mode(self):
         self.mode = "SWEET" if self.mode == "SALTY" else "SALTY"
@@ -75,7 +83,7 @@ class Mouth(pygame.sprite.Sprite):
             sprites[key] = img
         return sprites
 
-    def update(self, dt: float, keys: pygame.key.ScancodeWrapper):
+    def update(self, dt: float, keys):
         if self.dying:
             # continue death physics and effects only
             self.update_dying(dt)
@@ -191,25 +199,71 @@ class Mouth(pygame.sprite.Sprite):
         self.image = img
 
     def draw(self, surface: pygame.Surface):
-        # update smoke drawing order below mouth
+        # smoke
         for s in list(self._smoke):
             s.draw(surface)
             if not s.alive:
                 self._smoke.remove(s)
+
         draw_rect = self.rect.copy()
         if self.dying:
-            # violent jitter
             jitter = 6
             draw_rect.x += random.randint(-jitter, jitter)
             draw_rect.y += random.randint(-jitter, jitter)
+
+        # base mouth first
         surface.blit(self.image, draw_rect)
+
         if self.dying:
-            # red flash masked to sprite's non-transparent pixels
+            # tint the mouth NOW so the hat can be drawn on top later
             overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
             overlay.fill((255, 60, 60, 120))
             tinted = self.image.copy()
             tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
             surface.blit(tinted, draw_rect)
+
+        # hat on top, facing-aware
+        hat_img = None
+        ox = oy = 0
+        if self.facing == "RIGHT":
+            hat_img = self._hat_img_right
+            ox, oy = self._hat_offset_right
+        else:
+            hat_img = self._hat_img_left
+            ox, oy = self._hat_offset_left
+
+        if hat_img is not None:
+            hx = draw_rect.centerx + int(ox)
+            hy = draw_rect.centery + int(oy)
+            surface.blit(hat_img, (hx, hy))
+
+    def draw_scaled(self, surface: pygame.Surface, center: Tuple[int, int], scale: float = 1.0):
+        """Draw the mouth (and hat) at an arbitrary scale centered at `center`.
+        - Scales the current mouth image and hat sprites.
+        - Offsets are scaled so hats stay aligned.
+        """
+        # Base (mouth)
+        base_img = self.image
+        bw, bh = base_img.get_size()
+        sw = max(1, int(bw * scale))
+        sh = max(1, int(bh * scale))
+        scaled_mouth = pygame.transform.scale(base_img, (sw, sh))
+        mouth_rect = scaled_mouth.get_rect(center=center)
+        surface.blit(scaled_mouth, mouth_rect)
+
+        # Hat on top (if any), scaled with same factor
+        hat_img = self._hat_img_right if self.facing == "RIGHT" else self._hat_img_left
+        if hat_img is not None:
+            hw, hh = hat_img.get_size()
+            hsw = max(1, int(hw * scale))
+            hsh = max(1, int(hh * scale))
+            scaled_hat = pygame.transform.scale(hat_img, (hsw, hsh))
+            ox, oy = self._hat_offset_right if self.facing == "RIGHT" else self._hat_offset_left
+            sox = int(ox * scale)
+            soy = int(oy * scale)
+            hx = mouth_rect.centerx + sox
+            hy = mouth_rect.centery + soy
+            surface.blit(scaled_hat, (hx, hy))
 
     # Precise circle hit-test
     def circle_hit(self, point: tuple[int, int], radius: int = 0) -> bool:
@@ -237,3 +291,31 @@ class Mouth(pygame.sprite.Sprite):
             s.update(dt)
             if not s.alive:
                 self._smoke.remove(s)
+
+    # --- Hats API ---
+    def set_hat(self, hat_name: str | None):
+        if hat_name == getattr(self, "_hat_name", None) and self._hat_img_left is not None:
+            return
+        self._hat_name = hat_name
+        self._hat_img_left = None
+        self._hat_img_right = None
+        if not hat_name:
+            return
+
+        path = os.path.join(ASSET_HAT_DIR, hat_name)
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            # scale to mouth width so size stays consistent across frames
+            target_w = max(1, self.image.get_width())
+            scale = target_w / max(1, img.get_width())
+            new_w = max(1, int(img.get_width() * scale))
+            new_h = max(1, int(img.get_height() * scale))
+            left = pygame.transform.scale(img, (new_w, new_h))
+            right = pygame.transform.flip(left, True, False)
+
+            self._hat_img_left = left
+            self._hat_img_right = right
+        except Exception:
+            self._hat_img_left = None
+            self._hat_img_right = None
+

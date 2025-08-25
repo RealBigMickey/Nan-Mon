@@ -44,7 +44,7 @@ def _load_food_image(kind: str) -> pygame.Surface | None:
     if key in cache:
         return cache[key]
     img = pygame.image.load(path).convert_alpha()
-    img = pygame.transform.smoothscale(img, FOOD_SIZE)
+    img = pygame.transform.scale(img, FOOD_SIZE)
     cache[key] = img
     return img
 

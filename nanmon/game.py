@@ -59,10 +59,19 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             anim_fps=2.0,  # 每秒 2 張
         )
         _menu_res = init_menu.loop(dm, clock)
+        selected_hat = None
         if isinstance(_menu_res, tuple):
-            start, selected_level = _menu_res
+            if len(_menu_res) >= 2:
+                start = bool(_menu_res[0])
+                selected_level = int(_menu_res[1])
+                if len(_menu_res) >= 3:
+                    selected_hat = _menu_res[2]
+            elif len(_menu_res) == 1:
+                start = bool(_menu_res[0])
+            else:
+                start = False
         else:
-            start, selected_level = bool(_menu_res), 1
+            start = bool(_menu_res)
         if not start:
             pygame.quit()
             return  # 使用者按 ESC 或關閉視窗
@@ -94,6 +103,11 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
 # --- Teddy add end ---
 
     mouth = Mouth((WIDTH//2, HEIGHT - 140))
+    try:
+        if 'selected_hat' in locals() and selected_hat:
+            mouth.set_hat(selected_hat)
+    except Exception:
+        pass
     foods = pygame.sprite.Group()
     boss: Boss | None = None
     progress = Progress(level_cfg.boss_spawn_time)
@@ -463,7 +477,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 except Exception:
                     pass
                 # 不再播放level clear音效
-                fs = FinishScreen(eaten, level=selected_level, score=int(score))
+                fs = FinishScreen(eaten, level=selected_level, score=int(score), hat=(selected_hat if 'selected_hat' in locals() else None))
                 fs.loop(dm, clock)
                 return "RESTART"
 
