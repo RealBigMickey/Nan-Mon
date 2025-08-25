@@ -127,6 +127,12 @@ class InitMenu:
 
     def loop(self, screen_or_dm, clock: pygame.time.Clock):
         """Return (start: bool, level: int). Supports DisplayManager or raw Surface."""
+        import pygame
+        # 強制停止所有音效（包含BOSS音樂）
+        try:
+            pygame.mixer.stop()
+        except Exception:
+            pass
         while self.running:
             dt = clock.tick(FPS) / 1000.0
             for event in pygame.event.get():

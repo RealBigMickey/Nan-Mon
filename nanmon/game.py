@@ -45,12 +45,11 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             bg_color=(BG_COLOR.r, BG_COLOR.g, BG_COLOR.b),
         )
     except pygame.error as e:
-        print("Pygame video init failed:", e)
         return
     clock = pygame.time.Clock()
     font = pygame.font.Font(FONT_PATH, 16)
-# --- Teddy add start---
-     # --- 開始畫面（headless 模式會略過） ---
+    # --- Teddy add start---
+    # --- 開始畫面（headless 模式會略過） ---
     selected_level = 1  # default level if menu is skipped
     if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面
         init_menu = InitMenu(
@@ -66,19 +65,23 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         if not start:
             pygame.quit()
             return  # 使用者按 ESC 或關閉視窗
-        
+
     # ---- Level setup ----
     level_cfg = get_level(selected_level)
 
     # Optional per-level music
     try:
-        if level_cfg.music_path:
-            if not pygame.mixer.get_init():
-                pygame.mixer.init()
-            if os.path.exists(level_cfg.music_path):
-                pygame.mixer.music.load(level_cfg.music_path)
-                pygame.mixer.music.play(-1)
-    except Exception:
+        if not pygame.mixer.get_init():
+            # Windows某些環境需指定參數
+            pygame.mixer.init(frequency=44100, size=-16, channels=2)
+        # 強制指定level1背景音樂
+        music_path = os.path.join(os.path.dirname(__file__), 'assets', 'sounds', 'level1_backgrounds_sounds.wav')
+        if os.path.exists(music_path):
+            pygame.mixer.music.load(music_path)
+            pygame.mixer.music.play(-1)
+            pygame.mixer.music.set_volume(1.0)
+        # else: pass
+    except Exception as e:
         pass
 
     # ---- 背景：兩張圖上下滾動並交替 ----
@@ -217,6 +220,9 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     setattr(boss, "_lvl", level_cfg)
                 except Exception:
                     pass
+                # 播放boss音樂（背景音樂不停止）
+                # 音效檔案：boss1_sounds.wav
+                # 不在boss出現時自動播放音效
 
             # Update foods
             for f in list(foods):
@@ -260,6 +266,11 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 # Impact when boss just finished dying
                 if (not was_dead) and boss.dead:
                     shake.shake(duration=0.6, magnitude=16)
+                    # 停止boss音樂
+                    try:
+                        boss.stop_boss_music()
+                    except Exception:
+                        pass
                     # spawn a burst of smoke at impact
                     cx, by = boss.rect.centerx, min(HEIGHT - 20, boss.rect.bottom)
                     for _ in range(22):
@@ -332,6 +343,17 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
 
             # Boss death ends level
             if boss is not None and boss.dead:
+                # 播放level clear音效（只播放一次）
+                # 音效檔案：level_clear_sounds.wav
+                if not level_cleared:
+                    try:
+                        if boss and hasattr(boss, '_level_clear_snd') and boss._level_clear_snd:
+                            if not pygame.mixer.get_init():
+                                pygame.mixer.init()
+                            pygame.mixer.stop()
+                            boss._level_clear_snd.play()
+                    except Exception:
+                        pass
                 level_cleared = True
 
             if nausea >= NAUSEA_MAX and not player_invincible:
@@ -339,6 +361,16 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     # trigger player death animation and shake once
                     mouth.die()
                     shake.shake(duration=0.45, magnitude=12)
+                    # 播放game over音效（只播放一次）
+                    # 音效檔案：game_over_sounds.wav
+                    try:
+                        if boss and hasattr(boss, '_game_over_snd') and boss._game_over_snd:
+                            if not pygame.mixer.get_init():
+                                pygame.mixer.init()
+                            pygame.mixer.stop()
+                            boss._game_over_snd.play()
+                    except Exception:
+                        pass
                 game_over = True
 
         # --- draw order --- draw to world buffer then to logical frame with shake
@@ -403,6 +435,12 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         if level_cleared:
             # Wait for SPACE to begin transition
             if fade_to_finish and fade_finish_time >= fade_finish_duration:
+                # 停止背景音樂
+                try:
+                    pygame.mixer.music.stop()
+                except Exception:
+                    pass
+                # 不再播放level clear音效
                 fs = FinishScreen(eaten, level=selected_level, score=int(score))
                 fs.loop(dm, clock)
                 return "RESTART"

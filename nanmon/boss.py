@@ -41,8 +41,16 @@ from .levels import LevelConfig
 
 
 class Boss(pygame.sprite.Sprite):
+    def play_boss_music(self):
+        if self._boss_snd:
+            self._boss_snd.play(-1)
+
+    def stop_boss_music(self):
+        if self._boss_snd:
+            self._boss_snd.stop()
     def __init__(self, level_cfg: LevelConfig | None = None):
         super().__init__()
+        self._boss_shoot_played = False  # boss1_sounds.wav只播放一次
         self._lvl = level_cfg
 
         # Visuals
@@ -68,6 +76,44 @@ class Boss(pygame.sprite.Sprite):
         self.right_bound = WIDTH - 40
         self.shoot_cd = 0.0
         self.projectiles = pygame.sprite.Group()
+        # 音效屬性
+        import os
+        boss_sound_path = os.path.join(os.path.dirname(__file__), 'assets', 'sounds', 'boss1_sounds.wav')
+        hurt_sound_path = os.path.join(os.path.dirname(__file__), 'assets', 'sounds', 'boss1_hurt_sounds.wav')
+        game_over_path = os.path.join(os.path.dirname(__file__), 'assets', 'sounds', 'game_over_sounds.wav')
+        level_clear_path = os.path.join(os.path.dirname(__file__), 'assets', 'sounds', 'level_clear_sounds.wav')
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            if os.path.exists(boss_sound_path):
+                self._boss_snd = pygame.mixer.Sound(boss_sound_path)
+                self._boss_snd.set_volume(1.0)
+            else:
+                self._boss_snd = None
+        except Exception as e:
+            self._boss_snd = None
+        try:
+            if os.path.exists(hurt_sound_path):
+                self._hurt_snd = pygame.mixer.Sound(hurt_sound_path)
+                self._hurt_snd.set_volume(1.0)
+            else:
+                self._hurt_snd = None
+        except Exception as e:
+            self._hurt_snd = None
+        try:
+            if os.path.exists(game_over_path):
+                self._game_over_snd = pygame.mixer.Sound(game_over_path)
+            else:
+                self._game_over_snd = None
+        except Exception:
+            self._game_over_snd = None
+        try:
+            if os.path.exists(level_clear_path):
+                self._level_clear_snd = pygame.mixer.Sound(level_clear_path)
+            else:
+                self._level_clear_snd = None
+        except Exception:
+            self._level_clear_snd = None
 
         # Spawn state then active
         self.spawning = True
@@ -79,10 +125,10 @@ class Boss(pygame.sprite.Sprite):
         # Ring attack cadence
         base_ring = (self._lvl.boss.ring_interval if self._lvl else BOSS_RING_INTERVAL)
         self.ring_cd = base_ring * 0.5
-        self._second_ring_pending: tuple[str, float] | None = None
+        self._second_ring_pending = None
 
         # Weak point and state
-        self.target: Target | None = None
+        self.target = None
         self.target_cd = 0.4
         self.bites = 0
         self.dead = False
@@ -92,14 +138,14 @@ class Boss(pygame.sprite.Sprite):
         # Beam attack state
         self.beam_cd = 0.0
         self.beam_timer = 0.0
-        self.beam_kind: str | None = None  # "DORITOS" or "SODA"
+        self.beam_kind = None  # "DORITOS" or "SODA"
         self.beam_emit_accum = 0.0
 
         # death animation
         self.dying = False
         self.death_timer = 0.0
         self._smoke_cd = 0.0
-        self._smoke: list[Smoke] = []
+        self._smoke = []
         # continuous fume while alive scales with damage
         self.fume_cd = 0.0
 
@@ -289,6 +335,13 @@ class Boss(pygame.sprite.Sprite):
                 self.target_cd = TARGET_RESPAWN_BASE
 
     def shoot_food_burst(self):
+        # Boss射食物時音效：boss1_sounds.wav，只播放一次
+        if not self._boss_shoot_played and hasattr(self, '_boss_snd') and self._boss_snd:
+            try:
+                self._boss_snd.play()
+                self._boss_shoot_played = True
+            except Exception:
+                pass
         foods = (self._lvl.boss.burst_foods if self._lvl else ["DORITOS", "FRIES", "SODA", "ICECREAM"])  # light burst
         for _ in range(2):
             kind = random.choice(foods)
@@ -339,6 +392,9 @@ class Boss(pygame.sprite.Sprite):
             self.target.alive = False
             self.target = None
             self.target_cd = TARGET_RESPAWN_AFTER_BITE
+            # 播放boss受傷音效
+            if hasattr(self, '_hurt_snd') and self._hurt_snd:
+                self._hurt_snd.play()
         thresh = (self._lvl.boss.bites_to_kill if self._lvl else BOSS_BITES_TO_KILL)
         if self.bites >= thresh:
             # start death animation instead of instant death

@@ -37,7 +37,15 @@ class SpewItem:
 
 
 class FinishScreen:
+    # ...existing code...
     def __init__(self, eaten: EatenCounters, level: int, score: int):
+        self._drum_snd = None
+        self._spit_out_snd = None
+        self._bgm_snd = None
+        self._cymbal_snd = None
+        self._applause_snd = None
+        self._drum_snd = None
+    # ...existing code...
         # Store level, score, and eaten stats (including correct count)
         self.level = level
         self.eaten = eaten
@@ -102,7 +110,7 @@ class FinishScreen:
         self.show_grade = False
         self.grade_reveal_started = False
         self.grade_reveal_timer = 0.0
-        self._drum_snd = None
+        
         self._drum_chan = None
         self._pop_snd = None
         # Celebration state
@@ -145,6 +153,29 @@ class FinishScreen:
 
     # --- media loading helpers ---
     def _load_media(self) -> None:
+        # 新增音效載入
+        try:
+            spit_path = os.path.join("nanmon", "assets", "sounds", "spit_out.wav")
+            if os.path.exists(spit_path):
+                self._spit_out_snd = pygame.mixer.Sound(spit_path)
+            bgm_path = os.path.join("nanmon", "assets", "sounds", "final_screen_bg_sounds.wav")
+            if os.path.exists(bgm_path):
+                self._bgm_snd = pygame.mixer.Sound(bgm_path)
+
+            cymbal_path = os.path.join("nanmon", "assets", "sounds", "cymbal_sounds.wav")
+            if os.path.exists(cymbal_path):
+                self._cymbal_snd = pygame.mixer.Sound(cymbal_path)
+                self._cymbal_snd.set_volume(1.0)
+            applause_path = os.path.join("nanmon", "assets", "sounds", "applause_sounds.wav")
+            if os.path.exists(applause_path):
+                self._applause_snd = pygame.mixer.Sound(applause_path)
+                self._applause_snd.set_volume(1.0)
+            drum_path = os.path.join("nanmon", "assets", "sounds", "drum_sounds.wav")
+            if os.path.exists(drum_path):
+                self._drum_snd = pygame.mixer.Sound(drum_path)
+                self._drum_snd.set_volume(1.0)
+        except Exception:
+            pass
         # Sounds
         try:
             if not pygame.mixer.get_init():
@@ -349,6 +380,11 @@ class FinishScreen:
             self._resolve_ground(it)
             return
 
+        # 只有往下掉落時才受遮罩限制，往上拋不做遮罩碰撞
+        if it.vy < 0:
+            # 食物往上拋時不做任何遮罩碰撞
+            return
+
         # FIX: do NOT clamp to screen bottom when a container mask exists
         # (We still keep a small safety if something escapes entirely)
         if self._active_mask is None and it.cy + it.r >= HEIGHT:
@@ -356,28 +392,28 @@ class FinishScreen:
             it.vy = 0.0
 
         # Only resolve contact when moving downward and touching SOLID below
-        if it.vy >= 0:
-            # Sample directly below the circle
-            cx = float(min(WIDTH - 1, max(0, it.cx)))
-            bottom = float(min(HEIGHT - 1, max(0, it.cy + it.r + 1)))
-            if self._mask_solid_at_screen(cx, bottom):
-                # Step upward to the first non-solid pixel to sit on the surface
-                max_probe = 12
-                y = bottom
-                for _ in range(max_probe):
-                    if not self._mask_solid_at_screen(cx, y):
-                        break
-                    y -= 1
-                    if y < 0:
-                        break
-                # Position so the circle just touches the surface
-                it.cy = float(y) - it.r
-                it.vy = 0.0
-                # Apply ground friction and sleep when slow
-                it.vx *= GROUND_FRICTION
-                if abs(it.vx) < SLEEP_SPEED:
-                    it.vx = 0.0
-                    it.asleep = True
+        # 只有往下掉落才判斷遮罩
+        # Sample directly below the circle
+        cx = float(min(WIDTH - 1, max(0, it.cx)))
+        bottom = float(min(HEIGHT - 1, max(0, it.cy + it.r + 1)))
+        if self._mask_solid_at_screen(cx, bottom):
+            # Step upward to the first non-solid pixel to sit on the surface
+            max_probe = 12
+            y = bottom
+            for _ in range(max_probe):
+                if not self._mask_solid_at_screen(cx, y):
+                    break
+                y -= 1
+                if y < 0:
+                    break
+            # Position so the circle just touches the surface
+            it.cy = float(y) - it.r
+            it.vy = 0.0
+            # Apply ground friction and sleep when slow
+            it.vx *= GROUND_FRICTION
+            if abs(it.vx) < SLEEP_SPEED:
+                it.vx = 0.0
+                it.asleep = True
 
         # Optional: simple side push-out to avoid sticking into walls
         # Left sample
@@ -436,35 +472,31 @@ class FinishScreen:
             b = a + 1
         tx = int(random.triangular(a, b, a))
         ty = self.ground_y - img.get_height()
-        T = random.uniform(0.62, 0.9)
-        vx = (tx - x0) / T + random.uniform(-12, 10)
-        vy = (ty - y0 - 0.5 * GRAVITY * T * T) / T + random.uniform(-10, 2)
+        T = random.uniform(0.7, 1.1)  # 增加拋物線時間範圍
+        vx = (tx - x0) / T + random.uniform(-16, 16)  # 增加橫向隨機性
+        vy = (ty - y0 - 0.5 * GRAVITY * T * T) / T + random.uniform(-18, 6)  # 增加拋物線高度
         self.flying.append(SpewItem(kind, img, x0, y0, vx, vy))
-        # Play pop sound on spawn (if available)
-        if self._pop_snd is not None:
+        # Play spit_out sound on spawn (if available)
+        if self._spit_out_snd is not None:
             try:
-                self._pop_snd.play()
+                self._spit_out_snd.play()
             except Exception:
                 pass
 
     def _next_spew(self) -> None:
-        if self.done:
-            return
-        if self.current_idx >= len(self.order):
-            self.done = True
-            return
-        kind = self.order[self.current_idx]
-        if self.counts[kind] <= 0:
-            self.current_idx += 1
-            self._next_spew()
-            return
-        self.counts[kind] -= 1
-        self.shown[kind] += 1
-        self._spawn_spew(kind)
-        self.mouth.bite_timer = 0.0
-        self._bite_delay_timer = 0.045
-        if self.counts[kind] <= 0:
-            self.current_idx += 1
+        while not self.done:
+            if self.current_idx >= len(self.order):
+                self.done = True
+                return
+            kind = self.order[self.current_idx]
+            if self.counts[kind] <= 0:
+                self.current_idx += 1
+                continue
+            self.counts[kind] -= 1
+            self.shown[kind] += 1
+            self._spawn_spew(kind)
+            self.mouth.bite_timer = 0.0
+            break
 
     def _grade_letter(self) -> str:
         base = 100
@@ -478,7 +510,7 @@ class FinishScreen:
             base = 40
 
         final_score = self.score * math.sqrt(self.eaten.correct / self.eaten.total)
-        print(f"Base: {base}, level: {level}, score: {self.score}({self.eaten.correct}/{self.eaten.total}), final score: {final_score}")
+    # ...existing code...
 
         if final_score >= 2.0 * base:
             return "S"
@@ -493,6 +525,18 @@ class FinishScreen:
         return "F"
 
     def loop(self, dm, clock) -> None:
+        # 結算畫面開始時強制停止boss音樂（避免殘留）
+        try:
+            import pygame
+            pygame.mixer.stop()
+            # ...existing code...
+        except Exception as e:
+            pass
+        # 播放結尾畫面背景音樂
+        bgm_played = False
+        drum_played = False
+        cymbal_played = False
+        self._applause_played = False
         running = True
         # Fade-in from white for the result screen
         fade_in_t = 0.0
@@ -510,6 +554,13 @@ class FinishScreen:
             turn_snd = None
         fixed_mouth_pos = (int(WIDTH * 0.82), int(HEIGHT * 0.72) - self._y_offset)
         while running:
+            # 背景音樂只播放一次
+            if not bgm_played and self._bgm_snd is not None:
+                try:
+                    self._bgm_snd.play()
+                    bgm_played = True
+                except Exception:
+                    pass
             dt = clock.tick(60) / 1000.0
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -571,13 +622,15 @@ class FinishScreen:
                         self._next_spew()
                         self.spew_count += 1
             else:
+                # 吐完食物後才播放鼓聲，並延長分數揭曉等待
                 if not self.grade_reveal_started:
                     self.grade_reveal_started = True
-                    self.grade_reveal_timer = 1.0
-                    if self._drum_snd is not None:
+                    self.grade_reveal_timer = 2.2  # 可調整延長時間
+                    if not drum_played and self._drum_snd is not None:
                         try:
                             self._drum_chan = self._drum_snd.play()
-                        except Exception:
+                            drum_played = True
+                        except Exception as e:
                             self._drum_chan = None
                 elif not self.show_grade:
                     self.grade_reveal_timer = max(0.0, self.grade_reveal_timer - dt)
@@ -604,6 +657,15 @@ class FinishScreen:
                         # smoke burst only for non-F
                         self._need_smoke_spawn = (self._final_grade != 'F')
 
+                        # 分數揭曉後播放cymbal音效（只執行一次）
+                        if self._cymbal_snd is not None:
+                            try:
+                                self._cymbal_snd.play()
+                                 # S,A,B,C,D級才播放applause音效（只執行一次）
+                                if self._final_grade in ("S", "A", "B", "C", "D") and self._applause_snd is not None:
+                                    self._applause_snd.play()
+                            except Exception as e:
+                                pass
                         try:
                             if self._drum_chan is not None:
                                 self._drum_chan.stop()
@@ -661,7 +723,17 @@ class FinishScreen:
 
                 # Use container mask for collisions if available; else use flat ground
                 if self._active_mask is not None and self._container_rect is not None:
-                    self._resolve_container(it)
+                    # 允許食物從遮罩正上方掉落，不做反彈
+                    mask = self._active_mask
+                    rect = self._container_rect
+                    mx = int(it.cx - rect.left)
+                    my = int(it.cy - rect.top)
+                    # 如果食物在遮罩外，且在遮罩最上方區域，則不做反彈
+                    if my < rect.height * 0.08 and not mask.get_at((mx, my)):
+                        # 直接略過碰撞，讓食物掉下來
+                        pass
+                    else:
+                        self._resolve_container(it)
                 else:
                     self._resolve_ground(it)
                 it.update_rect()
