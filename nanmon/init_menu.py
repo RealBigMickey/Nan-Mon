@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import pygame
 from .constants import WIDTH, HEIGHT, BG_COLOR, WHITE, FPS, FONT_PATH, ASSET_HAT_DIR
+from .unlocks import load_unlocked_hats, is_debug_unlock_all, list_all_hats
 from .mouth import Mouth
 
 
@@ -78,6 +79,14 @@ class InitMenu:
         self.preview_mouth = None
         self._preview_pos = (WIDTH // 2, HEIGHT // 2 + 190)
         self._preview_bite_t = 0.0
+
+    @staticmethod
+    def _hat_display_name(hat: str | None) -> str:
+        if not hat:
+            return "None"
+        base = os.path.splitext(os.path.basename(hat))[0]
+        base = base.replace("_", " ").strip()
+        return base.title() if base else "None"
 
     def update(self, dt: float) -> None:
         # animate background
@@ -178,9 +187,8 @@ class InitMenu:
         level_s = self.font_title.render(level_label, True, (255, 255, 0) if self.focus == 0 else WHITE)
         surface.blit(level_s, (WIDTH//2 - level_s.get_width()//2, HEIGHT//2 + 40))
 
-        # Hat selector
-        hat_name = self.selected_hat if self.selected_hat else "None"
-        hat_label = f"Hat: {hat_name}"
+        # Hat selector (pretty name)
+        hat_label = f"Hat: {self._hat_display_name(self.selected_hat)}"
         hat_s = self.font_title.render(hat_label, True, (255, 255, 0) if self.focus == 1 else WHITE)
         surface.blit(hat_s, (WIDTH//2 - hat_s.get_width()//2, HEIGHT//2 + 90))
 
@@ -241,12 +249,15 @@ class InitMenu:
         return (self.start_game, self.selected_level, self.selected_hat)
 
     def _discover_hats(self):
-        items = []
+        # In debug mode, expose all hats; otherwise, only unlocked ones.
         try:
-            for fname in os.listdir(ASSET_HAT_DIR):
-                if fname.lower().endswith((".png", ".jpg", ".jpeg")):
-                    items.append(fname)
+            if is_debug_unlock_all():
+                items = list_all_hats()
+            else:
+                unlocked = load_unlocked_hats()
+                # Filter to files that actually exist
+                items = [fn for fn in unlocked if isinstance(fn, str) and os.path.exists(os.path.join(ASSET_HAT_DIR, fn))]
+            items.sort()
+            return [None] + items
         except Exception:
             return [None]
-        items.sort()
-        return [None] + items
