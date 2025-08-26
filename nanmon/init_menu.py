@@ -76,7 +76,12 @@ class InitMenu:
             self.bg_music_playing = False
 
         # Preview
-        self.preview_mouth = None
+        self.preview_mouth = Mouth((WIDTH // 2, HEIGHT // 2 + 190))
+        if self.selected_hat:
+            try:
+                self.preview_mouth.set_hat(self.selected_hat)
+            except Exception:
+                pass
         self._preview_pos = (WIDTH // 2, HEIGHT // 2 + 190)
         self._preview_bite_t = 0.0
 

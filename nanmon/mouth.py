@@ -26,6 +26,11 @@ HAT_SCALE = 1.509   # 1.0 = same as mouth; tweak to taste (slightly bigger)
 
 class Mouth(pygame.sprite.Sprite):
     def __init__(self, pos: Tuple[int, int]):
+        # 可自訂帽子/圍巾座標偏移（像素）
+        self._hat_offset_left = (-30, -31)   # when facing LEFT（建議微調Y值）
+        self._hat_offset_right = (-30, -31)  # when facing RIGHT
+        self._scarf_offset_left = (-5, 25)  # 圍巾偏移（如有）
+        self._scarf_offset_right = (-10, 25)
         super().__init__()
         # Basic state
         self.mode = "SALTY"  # SALTY -> blue sprites, SWEET -> pink sprites
@@ -36,6 +41,7 @@ class Mouth(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=pos)
         self.flash_timer = 0.0
         self.bite_timer = 0.0
+        self.bite_total = MOUTH_BITE_DURATION  # 咬合動畫總時長
         # Hybrid movement: a target point moved by keys; mouth eases toward it
         self.target = pygame.Vector2(self.rect.center)
         self.vel = pygame.Vector2(0, 0)
@@ -56,8 +62,6 @@ class Mouth(pygame.sprite.Sprite):
         self._hat_src_right: pygame.Surface | None = None
         # Hat offsets (fine adjustments relative to CENTER alignment)
         # By default the hat center aligns to the mouth center; tweak these as needed.
-        self._hat_offset_left = (0, 0)   # when facing LEFT
-        self._hat_offset_right = (0, 0)  # when facing RIGHT
 
     def toggle_mode(self):
         self.mode = "SWEET" if self.mode == "SALTY" else "SALTY"
@@ -366,6 +370,10 @@ class Mouth(pygame.sprite.Sprite):
 
             self._hat_src_left = hat_base
             self._hat_src_right = pygame.transform.flip(hat_base, True, False)
+            self._hat_img_left = self._hat_src_left
+            self._hat_img_right = self._hat_src_right
         except Exception:
             self._hat_src_left = None
             self._hat_src_right = None
+            self._hat_img_left = None
+            self._hat_img_right = None
