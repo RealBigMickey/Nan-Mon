@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import pygame
 from .constants import WIDTH, HEIGHT, BG_COLOR, WHITE, FPS, FONT_PATH, ASSET_HAT_DIR
+from .unlocks import load_unlocked_hats, is_debug_unlock_all, list_all_hats
 from .mouth import Mouth
 
 
@@ -248,12 +249,15 @@ class InitMenu:
         return (self.start_game, self.selected_level, self.selected_hat)
 
     def _discover_hats(self):
-        items = []
+        # In debug mode, expose all hats; otherwise, only unlocked ones.
         try:
-            for fname in os.listdir(ASSET_HAT_DIR):
-                if fname.lower().endswith((".png", ".jpg", ".jpeg")):
-                    items.append(fname)
+            if is_debug_unlock_all():
+                items = list_all_hats()
+            else:
+                unlocked = load_unlocked_hats()
+                # Filter to files that actually exist
+                items = [fn for fn in unlocked if isinstance(fn, str) and os.path.exists(os.path.join(ASSET_HAT_DIR, fn))]
+            items.sort()
+            return [None] + items
         except Exception:
             return [None]
-        items.sort()
-        return [None] + items

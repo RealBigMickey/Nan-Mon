@@ -33,6 +33,16 @@ def main():
         res = run_game(headless_seconds=args.headless, smooth_scale=args.smooth_scale, margin=args.margin)
         if res == "RESTART":
             continue
+        if isinstance(res, tuple) and len(res) == 2 and res[0] == "NEXT_LEVEL":
+            # Start next level directly, skipping the menu
+            _, lvl = res
+            res = run_game(headless_seconds=args.headless, smooth_scale=args.smooth_scale, margin=args.margin, start_level=int(lvl))
+            if res == "RESTART":
+                continue
+            if isinstance(res, tuple) and len(res) == 2 and res[0] == "NEXT_LEVEL":
+                # loop to support multiple consecutive NEXT_LEVEL signals
+                continue
+            break
         break
 
 

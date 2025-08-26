@@ -3,7 +3,13 @@ import os
 import random
 import math
 import pygame
-from .constants import WIDTH, HEIGHT, ASSET_FOOD_DIR, FOOD_SIZE, FONT_PATH
+from .constants import WIDTH, HEIGHT, ASSET_FOOD_DIR, FOOD_SIZE, FONT_PATH, ASSET_HAT_DIR
+from .unlocks import (
+    load_unlocked_hats,
+    unlock_hat,
+    is_debug_unlock_all,
+    list_all_hats,
+)
 from .effects import Smoke
 from .models import KINDS, EatenCounters
 from .mouth import Mouth
@@ -37,20 +43,20 @@ class SpewItem:
 
 
 class FinishScreen:
-    # ...existing code...
     def __init__(self, eaten: EatenCounters, level: int, score: int, hat: str | None = None):
+        # Sound placeholders
         self._drum_snd = None
         self._spit_out_snd = None
         self._bgm_snd = None
         self._cymbal_snd = None
         self._applause_snd = None
-        self._drum_snd = None
-    # ...existing code...
+
         # Store level, score, and eaten stats (including correct count)
         self.level = level
         self.eaten = eaten
         self.score = score
         self._y_offset = 60
+        self._final_grade: str | None = None
 
         # Scrolling background setup
         self._bg_img = None
@@ -115,21 +121,30 @@ class FinishScreen:
         self.show_grade = False
         self.grade_reveal_started = False
         self.grade_reveal_timer = 0.0
-        
+
+        # Result sounds and channels
         self._drum_chan = None
         self._pop_snd = None
+        self._cheer_snd = None
+        self._cheer_chan = None
+        self._spray_snd = None
+
         # Celebration state
         self._reveal_time = 0.0
         self._confetti = []
         self._confetti_trickle = 0.0
         self._confetti_accum = 0.0
-        self._cheer_snd = None
-        self._cheer_chan = None
-        self._spray_snd = None
         self._smoke = []
         self._flash_time = 0.0
         self._impact_jitter_time = 0.0
         self._impact_jitter_mag = 0.0
+
+        # Unlock animation assets
+        self._mystery_img = None
+        self._lighting_img = None
+        self._unlock_hat_img = None
+        self._unlock_hat_name = None
+        self._unlock_hat_file = None
 
         # Rank images (S, A, B, C, D, F)
         self._rank_imgs = {}
@@ -153,12 +168,6 @@ class FinishScreen:
         self._walls_mask = None   # outline/solid pixels from image
         self._interior_mask = None  # filled interior computed
         self._active_mask = None   # mask used for collisions
-        # Load media/assets
-        self._load_media()
-
-    # --- media loading helpers ---
-    def _load_media(self) -> None:
-        # 新增音效載入
         try:
             spit_path = os.path.join("nanmon", "assets", "sounds", "spit_out.wav")
             if os.path.exists(spit_path):
@@ -308,6 +317,248 @@ class FinishScreen:
                 self._clap_img = pygame.transform.scale(cim, (scale_w, scale_h))
             except Exception:
                 self._clap_img = None
+
+        # Mystery box and lighting assets (optional)
+        try:
+            p_box = os.path.join("nanmon", "assets", "clear_screen", "mystery_box.png")
+            if os.path.exists(p_box):
+                box = pygame.image.load(p_box).convert_alpha()
+                # scale box to ~30% width
+                target_w = int(WIDTH * 0.3)
+                scale = target_w / max(1, box.get_width())
+                target_h = max(1, int(box.get_height() * scale))
+                self._mystery_img = pygame.transform.scale(box, (target_w, target_h))
+        except Exception:
+            self._mystery_img = None
+        try:
+            p_lt = os.path.join("nanmon", "assets", "clear_screen", "Lighting.png")
+            if os.path.exists(p_lt):
+                lt = pygame.image.load(p_lt).convert_alpha()
+                # Keep original size; will draw at (0,0) without scaling
+                self._lighting_img = lt
+        except Exception:
+            self._lighting_img = None
+
+    @staticmethod
+    def _hat_display_name(hat: str | None) -> str:
+        if not hat:
+            return "Unknown"
+        base = os.path.splitext(os.path.basename(hat))[0]
+        base = base.replace("_", " ").strip()
+        return base.title() if base else "Unknown"
+
+    def _choose_random_hat(self) -> tuple[str | None, pygame.Surface | None]:
+        """Pick a random hat image, preferring hats not yet unlocked.
+        Returns (file_name, scaled_surface)."""
+        all_hats = list_all_hats()
+        if not all_hats:
+            return (None, None)
+        unlocked = load_unlocked_hats()
+        if not is_debug_unlock_all():
+            candidates = [h for h in all_hats if h not in unlocked]
+        else:
+            candidates = list(all_hats)
+        if not candidates:
+            candidates = list(all_hats)
+        pick = random.choice(candidates)
+        try:
+            path = os.path.join(ASSET_HAT_DIR, pick)
+            img = pygame.image.load(path).convert_alpha()
+            # scale hat to a nice showcase size
+            max_w = int(WIDTH * 0.28)
+            max_h = int(HEIGHT * 0.18)
+            w, h = img.get_size()
+            scale = min(max_w / max(1, w), max_h / max(1, h), 1.5)
+            sw, sh = max(1, int(w * scale)), max(1, int(h * scale))
+            simg = pygame.transform.scale(img, (sw, sh))
+            return (pick, simg)
+        except Exception:
+            return (pick, None)
+
+    def _play_hat_unlock(self, dm, clock) -> None:
+        """Show a short unlock animation with a mystery box, lightning, and a random hat reveal."""
+        # Prepare hat choice
+        hat_file, hat_img = self._choose_random_hat()
+        self._unlock_hat_file = hat_file
+        self._unlock_hat_name = self._hat_display_name(hat_file)
+        self._unlock_hat_img = hat_img
+
+        # Fresh confetti for unlock sequence
+        self._confetti = []
+
+        t = 0.0                 # staged timing for reveal beats (can clamp)
+        dur = 2.6               # staging window length
+        elapsed = 0.0           # unbounded timer for continuous effects (blink/rotation)
+        stage_pop = False
+        pop_time: float | None = None
+        stage_cheer = False
+
+        # Start a drum roll if available
+        try:
+            if self._drum_snd is not None:
+                self._drum_snd.play()
+        except Exception:
+            pass
+
+        # Snapshot the current clear-screen frame to keep as the background
+        base_bg = dm.get_logical_surface().copy()
+
+        while True:
+            dt = clock.tick(60) / 1000.0
+            elapsed += dt
+            if t < dur:
+                t += dt
+
+            surf = dm.get_logical_surface()
+            # Draw the captured background first
+            surf.blit(base_bg, (0, 0))
+            # Dim the background
+            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            surf.blit(overlay, (0, 0))
+
+            # Box position and subtle animation (hide once the hat appears)
+            if t < 1.55:
+                bx = WIDTH // 2
+                box_img = self._mystery_img
+                if box_img is not None:
+                    bw, bh = box_img.get_size()
+                    # bounce in first 0.6s
+                    scale = 1.0
+                    if t < 0.6:
+                        phase = t / 0.6
+                        scale = 0.9 + 0.1 * (1 - math.cos(phase * math.pi))
+                    # slight shake 0.6-1.6s
+                    jitter_x = 0
+                    if 0.6 <= t <= 1.6:
+                        jitter_x = random.randint(-3, 3)
+                    # strong rapid rotation while unlocking 0.6-1.6s
+                    angle = 0.0
+                    if 0.6 <= t <= 1.6:
+                        phase = (t - 0.6)
+                        angle = 28.0 * math.sin(phase * 2 * math.pi * 8.0)
+                    sbw, sbh = int(bw * scale), int(bh * scale)
+                    sbw = max(1, sbw); sbh = max(1, sbh)
+                    scaled_box = pygame.transform.scale(box_img, (sbw, sbh))
+                    # rotate after scaling for crisper result
+                    if angle != 0.0:
+                        scaled_box = pygame.transform.rotate(scaled_box, angle)
+                    by = int(HEIGHT * 0.60)
+                    rect = scaled_box.get_rect(center=(bx + jitter_x, by))
+                    surf.blit(scaled_box, rect)
+                else:
+                    # fallback placeholder
+                    rect = pygame.Rect(WIDTH//2 - 120, int(HEIGHT*0.60) - 80, 240, 160)
+                    pygame.draw.rect(surf, (120, 120, 140), rect)
+                    pygame.draw.rect(surf, (40, 40, 60), rect, 4)
+
+            # At 1.6s, POP + lightning + reveal
+            if t >= 1.6 and not stage_pop:
+                stage_pop = True
+                pop_time = elapsed
+                try:
+                    if self._pop_snd is not None:
+                        self._pop_snd.play()
+                    elif self._spray_snd is not None:
+                        self._spray_snd.play()
+                except Exception:
+                    pass
+                # stop drum if rolling
+                try:
+                    if self._drum_chan is not None:
+                        self._drum_chan.stop()
+                except Exception:
+                    pass
+                # Confetti burst when popping
+                self._spawn_confetti(burst=220)
+                # Persist unlock
+                try:
+                    if self._unlock_hat_file:
+                        unlock_hat(self._unlock_hat_file)
+                except Exception:
+                    pass
+
+            # Lightning flash window 1.6-1.9
+            if self._lighting_img is not None and 1.6 <= t <= 1.9:
+                alpha = int(255 * max(0.0, 1.0 - (t - 1.6) / 0.3))
+                lt = self._lighting_img.copy()
+                # apply overall alpha via multiply (no scaling, placed at (0,0))
+                if alpha < 255:
+                    aoverlay = pygame.Surface(lt.get_size(), pygame.SRCALPHA)
+                    aoverlay.fill((255, 255, 255, alpha))
+                    lt.blit(aoverlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                surf.blit(lt, (0, 0))
+
+            # Hat reveal rising from the box after 1.55s (draw at 1.5x scale)
+            if self._unlock_hat_img is not None and t >= 1.55:
+                hi = self._unlock_hat_img
+                hw, hh = hi.get_size()
+                sw = max(1, int(hw * 1.5))
+                sh = max(1, int(hh * 1.5))
+                scaled_hi = pygame.transform.smoothscale(hi, (sw, sh))
+                # slow continuous rotation after reveal using unbounded elapsed
+                angle = max(0.0, (elapsed - 1.55)) * 60.0  # deg/sec
+                rotated_hi = pygame.transform.rotate(scaled_hi, angle)
+                hr = rotated_hi.get_rect()
+                rise = min(1.0, (t - 1.55) / 0.7)
+                y = int(HEIGHT * 0.62) - int(160 * rise) + 130
+                hr.midbottom = (WIDTH // 2, y)
+                surf.blit(rotated_hi, hr)
+                if not stage_cheer and t >= 1.8:
+                    stage_cheer = True
+                    try:
+                        if self._cheer_snd is not None:
+                            self._cheer_snd.play()
+                    except Exception:
+                        pass
+
+            # Texts (only after the hat starts to emerge), smaller and clamped to width
+            if t >= 1.55:
+                # Title smaller
+                title_surf = self.font_list.render("New Hat Unlocked!", True, pygame.Color(255, 255, 0))
+                tx = (WIDTH - title_surf.get_width()) // 2
+                ty = int(HEIGHT * 0.16)
+                surf.blit(title_surf, (tx, ty))
+
+                if self._unlock_hat_name:
+                    name_surf = self.font.render(self._unlock_hat_name, True, pygame.Color(255, 255, 255))
+                    # Clamp to 90% screen width if needed
+                    max_w = int(WIDTH * 0.9)
+                    if name_surf.get_width() > max_w:
+                        scale = max_w / name_surf.get_width()
+                        new_w = max(1, int(name_surf.get_width() * scale))
+                        new_h = max(1, int(name_surf.get_height() * scale))
+                        name_surf = pygame.transform.smoothscale(name_surf, (new_w, new_h))
+                    nx = (WIDTH - name_surf.get_width()) // 2
+                    ny = ty + title_surf.get_height() + 6
+                    surf.blit(name_surf, (nx, ny))
+
+            # Update and draw confetti using finish screen effect
+            self._update_confetti(dt)
+            self._draw_confetti(surf)
+
+            # After POP, show continue prompt centered near bottom with real blinking
+            if stage_pop and pop_time is not None:
+                since_pop = max(0.0, elapsed - pop_time)
+                if since_pop >= 0.15:
+                    # blink at ~2Hz based on unbounded elapsed time
+                    if (int(since_pop * 2) % 2) == 0:
+                        prompt = "Press space to continue"
+                        pr = self.font_small.render(prompt, True, pygame.Color(255, 255, 255))
+                        px = (WIDTH - pr.get_width()) // 2
+                        py = HEIGHT - max(28, int(self.font_small.get_linesize() * 1.6)) - 200
+                        self._draw_text_outlined(surf, self.font_small, prompt, (px, py))
+
+            dm.present()
+
+            # Only exit when SPACE/ENTER is pressed after the box has opened (pop)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return
+                if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                    if stage_pop:
+                        return
+                    # ignore presses before the box opens
 
     # --- Celebration helpers ---
     def _spawn_confetti(self, burst: int = 80):
@@ -488,6 +739,69 @@ class FinishScreen:
             except Exception:
                 pass
 
+    def _spawn_settled(self, kind: str) -> None:
+        """Instantly place a food item onto the pile as if it has finished falling."""
+        img = self.food_imgs[kind]
+        margin = img.get_width() * 0.5
+        a = self.pile_left + margin
+        b = min(self.pile_right - margin, self.mouth.rect.centerx - margin - 140)
+        if b <= a:
+            b = a + 1
+        tx = int(random.triangular(a, b, a))
+        ty = self.ground_y - img.get_height()
+        it = SpewItem(kind, img, float(tx), float(ty), 0.0, 0.0)
+        it.asleep = True
+        it.update_rect()
+        self.settled.append(it)
+
+    def _skip_to_end(self) -> None:
+        """Skip animations: place all remaining items, reveal grade and scores immediately."""
+        # Place all remaining food immediately
+        for k in self.order:
+            remaining = max(0, int(self.counts.get(k, 0)))
+            if remaining:
+                for _ in range(remaining):
+                    self._spawn_settled(k)
+                self.shown[k] += remaining
+                self.counts[k] = 0
+        self.flying.clear()
+        self.done = True
+
+        # Stop any drum roll
+        try:
+            if self._drum_chan is not None:
+                self._drum_chan.stop()
+        except Exception:
+            pass
+
+        # Reveal grade now
+        self.grade_reveal_started = True
+        self.grade_reveal_timer = 0.0
+        self.show_grade = True
+        self._reveal_time = 0.0
+        self._final_grade = self._grade_letter()
+
+        # Celebrate like normal reveal
+        if self._final_grade != 'F':
+            self._spawn_confetti(burst=400)
+            self._confetti_trickle = 1.2
+        else:
+            self._confetti_trickle = 0.0
+        self._confetti_accum = 0.0
+        self._flash_time = 0.14
+        self._impact_jitter_time = 0.32
+        self._impact_jitter_mag = 8.0
+        self._need_smoke_spawn = (self._final_grade != 'F')
+
+        # Play cymbal/applause once
+        try:
+            if self._cymbal_snd is not None:
+                self._cymbal_snd.play()
+            if self._final_grade in ("S", "A", "B", "C", "D") and self._applause_snd is not None:
+                self._applause_snd.play()
+        except Exception:
+            pass
+
     def _next_spew(self) -> None:
         while not self.done:
             if self.current_idx >= len(self.order):
@@ -531,7 +845,7 @@ class FinishScreen:
             return "D"
         return "F"
 
-    def loop(self, dm, clock) -> None:
+    def loop(self, dm, clock):
         # 結算畫面開始時強制停止boss音樂（避免殘留）
         try:
             import pygame
@@ -587,7 +901,12 @@ class FinishScreen:
                         except Exception:
                             pass
                         return
-                    if event.key == pygame.K_SPACE and self.done:
+                    if event.key == pygame.K_SPACE:
+                        # If not revealed yet, skip to final state (place all items, show grade now)
+                        if not self.show_grade:
+                            self._skip_to_end()
+                            continue
+                        # Already showing grade: proceed to next screen
                         # 播放選單音效
                         try:
                             if turn_snd:
@@ -600,7 +919,15 @@ class FinishScreen:
                                     pygame.mixer.Sound(sound_path).play()
                         except Exception:
                             pass
-                        return
+                        # If grade is A/S, play unlock sequence before exit
+                        try:
+                            letter = self._final_grade or self._grade_letter()
+                        except Exception:
+                            letter = None
+                        if letter in ("A", "S"):
+                            self._play_hat_unlock(dm, clock)
+                        # All ranks continue to next level
+                        return ("NEXT_LEVEL", int(self.level) + 1)
 
             keys = pygame.key.get_pressed()
             self.mouth.update(dt, keys)

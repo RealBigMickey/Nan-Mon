@@ -27,6 +27,7 @@ HAT_SCALE = 1.509   # 1.0 = same as mouth; tweak to taste (slightly bigger)
 class Mouth(pygame.sprite.Sprite):
     def __init__(self, pos: Tuple[int, int]):
         super().__init__()
+        # Basic state
         self.mode = "SALTY"  # SALTY -> blue sprites, SWEET -> pink sprites
         self.facing = "RIGHT"  # LEFT/RIGHT
         self._sprites = self._load_sprites()
@@ -35,20 +36,25 @@ class Mouth(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=pos)
         self.flash_timer = 0.0
         self.bite_timer = 0.0
-        # Hybrid movement: a target point moved by keys; mouth eases toward it
-        self.target = pygame.Vector2(self.rect.center)
+
+        # Movement helpers
+        self.target = pygame.Vector2(self.rect.center)  # target position for spring-y motion
         self.vel = pygame.Vector2(0, 0)
-        # death animation state
+
+        # Death/FX state
         self.dying = False
         self.death_timer = 0.0
         self._smoke_cd = 0.0
-        self._smoke = []  # list[Smoke]
-        # brief control dampening after big impacts to preserve momentum
-        self.stagger_timer = 0.0
-        # Hat state
-        self._hat_name = None
-        self._hat_img_left = None
-        self._hat_img_right = None
+        self._smoke: list[Smoke] = []
+        self.stagger_timer = 0.0  # brief control dampening after big impacts
+
+        # Hat state and rendering sources
+        self._hat_name: str | None = None
+        self._hat_img_left: pygame.Surface | None = None
+        self._hat_img_right: pygame.Surface | None = None
+        # Normalized hat sources used for rendering (initialized to None until set_hat is called)
+        self._hat_src_left: pygame.Surface | None = None
+        self._hat_src_right: pygame.Surface | None = None
         # Hat offsets (fine adjustments relative to CENTER alignment)
         # By default the hat center aligns to the mouth center; tweak these as needed.
         self._hat_offset_left = (0, 0)   # when facing LEFT
@@ -257,7 +263,7 @@ class Mouth(pygame.sprite.Sprite):
             hw0, hh0 = hat_src.get_size()
             new_hw = max(1, int(round(hw0 * scale)))
             new_hh = max(1, int(round(hh0 * scale)))
-            scaled_hat = pygame.transform.smoothscale(hat_src, (new_hw, new_hh))
+            scaled_hat = pygame.transform.scale(hat_src, (new_hw, new_hh))
 
             ox, oy = (self._hat_offset_right if self.facing == "RIGHT" else self._hat_offset_left)
             # offsets scale with the same factor

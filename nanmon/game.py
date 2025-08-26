@@ -30,7 +30,7 @@ from .earth_bg_anim import draw_earth_bg_anim
 import os
 from .levels import get_level
 
-def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95):
+def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95, start_level: int | None = None):
     rng = random.Random(RNG_SEED)
 
     if headless_seconds is not None:
@@ -51,8 +51,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     font = pygame.font.Font(FONT_PATH, 16)
     # --- Teddy add start---
     # --- 開始畫面（headless 模式會略過） ---
-    selected_level = 1  # default level if menu is skipped
-    if headless_seconds is None:  # CI/無視窗測試不顯示開始畫面
+    selected_level = start_level or 1  # default level or provided
+    if headless_seconds is None and start_level is None:  # CI/無視窗測試與連續關卡時略過開始畫面
         init_menu = InitMenu(
             image_path_1="nanmon/assets/init_menu_1.jpg",
             image_path_2="nanmon/assets/init_menu_2.jpg",
@@ -478,7 +478,11 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     pass
                 # 不再播放level clear音效
                 fs = FinishScreen(eaten, level=selected_level, score=int(score), hat=(selected_hat if 'selected_hat' in locals() else None))
-                fs.loop(dm, clock)
+                res = fs.loop(dm, clock)
+                # Handle next-level progression (wins) or restart (menu)
+                if isinstance(res, tuple) and len(res) == 2 and res[0] == "NEXT_LEVEL":
+                    next_level = int(res[1])
+                    return ("NEXT_LEVEL", next_level)
                 return "RESTART"
 
         # Track boss contact edge for next frame
