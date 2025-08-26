@@ -29,6 +29,7 @@ from .clear_screen import FinishScreen
 from .earth_bg_anim import draw_earth_bg_anim
 import os
 from .levels import get_level
+from .level2_clear_anim import draw_level2_clear_anim #level2
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95, start_level: int | None = None):
     rng = random.Random(RNG_SEED)
@@ -168,6 +169,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
 
     earth_anim_state = {}  # 狀態保存於主循環外
     earth_anim_done = False
+    l2_done = False
     while running:
         dt = clock.tick(FPS) / 1000.0
         bg.update(dt) #Teddy add
@@ -420,32 +422,42 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         draw_hud(frame, font, mouth, nausea, eaten, int(score), legend_alpha, level_cleared, game_over)
         # If cleared, show continue prompt
         if level_cleared:
-            # 執行 earth_bg 動畫（動畫完成後等待 SPACE）
-            earth_bg_center_y = HEIGHT // 2
-            earth_bg_h = int(HEIGHT * (2/3))
-            earth_text_y = max(20, earth_bg_center_y - earth_bg_h//2 - 40)  # 圖片上方偏上
-            if not earth_anim_done:
+            if selected_level == 2:
+                # ← 只有第二關用新的台灣+火球動畫
+                if 'l2_anim_state' not in locals():
+                    l2_anim_state = {}
+                l2_anim_state['mouth_pos'] = mouth.rect.center  # (x, y)
+                l2_anim_state['dt'] = dt
+                l2_done = draw_level2_clear_anim(frame, l2_anim_state)
+                # 動畫結束後，才允許 SPACE 進到結算畫面
+                if l2_done:
+                    for event in pygame.event.get():
+                        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                            if page_turn_snd:
+                                try:
+                                    page_turn_snd.play()
+                                except Exception:
+                                    pass
+                            waiting_clear_space = False
+                            fade_to_finish = True
+                            fade_finish_time = 0.0
+            else:
+                # 其它關卡，沿用你原本的 earth 動畫
                 earth_anim_state['dt'] = dt
                 earth_anim_done = draw_earth_bg_anim(frame, earth_anim_state)
-            else:
-                draw_earth_bg_anim(frame, earth_anim_state)  # 停在中央
-                # 插入 'We have arrived on Earth!' 文字
-                arrived_msg = font.render("We have arrived on Earth!", True, WHITE)
-                frame.blit(arrived_msg, (WIDTH//2 - arrived_msg.get_width()//2, earth_text_y))
-                # Press space 文字
-                space_msg = font.render("Press SPACE to continue", True, WHITE)
-                frame.blit(space_msg, (WIDTH//2 - space_msg.get_width()//2, earth_text_y + 36))
-                # 只有動畫完成後才允許 SPACE 進入結算
-                for event in pygame.event.get():
-                    if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                        if page_turn_snd:
-                            try:
-                                page_turn_snd.play()
-                            except Exception:
-                                pass
-                        waiting_clear_space = False
-                        fade_to_finish = True
-                        fade_finish_time = 0.0
+                if earth_anim_done:
+                    # ...（保留你原本的 SPACE 進結算流程）
+                    for event in pygame.event.get():
+                        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                            if page_turn_snd:
+                                try:
+                                    page_turn_snd.play()
+                                except Exception:
+                                    pass
+                            waiting_clear_space = False
+                            fade_to_finish = True
+                            fade_finish_time = 0.0
+                    
         # progress bar
         if not (level_cleared or game_over) and boss is None:
             progress.draw(frame)
