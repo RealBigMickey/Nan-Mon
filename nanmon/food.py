@@ -18,7 +18,9 @@ KINDS = [
     # Level 1
     "DORITOS", "BURGERS", "FRIES", "ICECREAM", "SODA", "CAKE",
     # Level 2
-    "SHAVEDICE", "DONUT", "CUPCAKE", "RIBS", "HOTDOG", "FRIEDCHICKEN",
+        "SHAVEDICE", "DONUT", "CUPCAKE", "RIBS", "HOTDOG", "FRIEDCHICKEN",
+        # HOTDOG splits into these
+        "DOG", "BREAD",
     # Level 3
     "BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE", "TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE",
 ]
@@ -42,7 +44,10 @@ FOOD_IMAGE_FILES = {
     "DONUT": "DONUT.png",
     "CUPCAKE": "CUPCAKE.png",
     "RIBS": "RIBS.png",
-    "HOTDOG": "HOTDOG.png",
+        "HOTDOG": "HOTDOG.png",
+        # HOTDOG split parts
+        "DOG": "DOG.png",
+        "BREAD": "BREAD.png",
     # Level 3
     "BEEFSOUP": "BEEFSOUP.png",
     "RICEBOWLCAKE": "RICEBOWLCAKE.png",
@@ -102,6 +107,15 @@ class Food(pygame.sprite.Sprite):
             self.image = self.base_image.copy()
             self._draw_shape()  # ← 你的原本幾何造型保留當備援
 
+        # Special per-kind setup
+        # SHAVEDICE: very slow fall
+        if self.kind == "SHAVEDICE":
+            self.vy = min(self.vy, 140.0)
+        # HOTDOG: will split into DOG + BREAD after a short delay (faster so it happens on-screen)
+        self._split_timer = (random.uniform(0.4, 0.8) if self.kind == "HOTDOG" else None)
+        self.spawn_children = None
+        self.remove_me = False
+
         # Spawn from top by default, or from a provided center Y (e.g., boss center)
         if spawn_center_y is None:
             self.rect = self.image.get_rect(midtop=(x, -FOOD_SIZE[1]))
@@ -139,7 +153,11 @@ class Food(pygame.sprite.Sprite):
         if self.homing and mouth_pos is not None:
             target_x = mouth_pos[0]
             dx = target_x - (self.fx + self.rect.width/2)
-            base = HOMING_STRENGTH_STRONG if self.kind in ("BURGERS", "CAKE") else HOMING_STRENGTH_WEAK
+            strong_set = {"BURGERS", "CAKE", "DONUT"}
+            base = HOMING_STRENGTH_STRONG if self.kind in strong_set else HOMING_STRENGTH_WEAK
+            # DONUT: very strong tracking
+            if self.kind == "DONUT":
+                base *= 2.2
             scale = min(1.0, abs(dx) / HOMING_RANGE_SCALE)
             strength = base * (0.3 + 0.7 * scale)
             steer = max(-1.0, min(1.0, dx / 90.0))
@@ -150,6 +168,22 @@ class Food(pygame.sprite.Sprite):
         self.fy += self.vy * dt
         self.rect.x = int(self.fx)
         self.rect.y = int(self.fy)
+
+        # HOTDOG split behavior: replace self with DOG and BREAD
+        if self._split_timer is not None and not self.remove_me:
+            self._split_timer -= dt
+            # If we're getting close to the bottom, force an early split so it's visible
+            if (self.rect.top >= HEIGHT - 220) and self.spawn_children is None:
+                self._split_timer = 0.0
+            if self._split_timer <= 0 and self.spawn_children is None:
+                cx, cy = self.rect.center
+                # Both parts are SALTY, inherit fall speed but diverge horizontally
+                dog = Food("DOG", "SALTY", cx - 10, max(self.vy, 220.0), False, spawn_center_y=cy)
+                bread = Food("BREAD", "SALTY", cx + 10, max(self.vy, 220.0), False, spawn_center_y=cy)
+                dog.vx = -140.0
+                bread.vx = 140.0
+                self.spawn_children = [dog, bread]
+                self.remove_me = True
 
     def draw(self, surface: pygame.Surface):
         surface.blit(self.image, self.rect)

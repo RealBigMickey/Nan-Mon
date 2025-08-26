@@ -258,6 +258,16 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             # Update foods
             for f in list(foods):
                 f.update(dt, mouth.rect.center)
+                # If HOTDOG split produced children, add them and remove the parent
+                spawn_kids = getattr(f, 'spawn_children', None)
+                if spawn_kids:
+                    for ch in spawn_kids:
+                        foods.add(ch)
+                    # clear to avoid duplicating next frame
+                    f.spawn_children = None
+                if getattr(f, 'remove_me', False):
+                    foods.remove(f)
+                    continue
                 if f.rect.top > HEIGHT + 10 or f.rect.right < -50 or f.rect.left > WIDTH + 50:
                     foods.remove(f)
 
@@ -376,6 +386,9 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         if not player_invincible:
                             nausea_add = getattr(level_cfg, 'nausea_wrong_eat', NAUSEA_WRONG_EAT)
                             nausea = min(NAUSEA_MAX, nausea + nausea_add)
+                            # SHAVEDICE wrong eat: apply cold status (slow + blue tint)
+                            if f.kind == "SHAVEDICE":
+                                mouth.apply_cold(duration=2.0, speed_scale=0.7)
                     foods.remove(f)
 
             # Boss death ends level
