@@ -234,7 +234,18 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             # Spawn boss when progress ready
             progress.update(dt)
             if boss is None and progress.ready:
-                boss = Boss()  # instantiate; Boss supports level config via attribute if available
+                # Instantiate boss per level
+                try:
+                    from .boss import DandanBurger, OrangePork
+                except Exception:
+                    DandanBurger = Boss  # fallback
+                    OrangePork = Boss
+                if level_cfg and getattr(level_cfg, 'level', 1) == 2:
+                    boss = OrangePork(level_cfg)
+                elif level_cfg and getattr(level_cfg, 'level', 1) == 1:
+                    boss = DandanBurger(level_cfg)
+                else:
+                    boss = Boss(level_cfg)
                 # Attach level config if Boss supports it
                 try:
                     setattr(boss, "_lvl", level_cfg)
@@ -259,7 +270,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     player_invincible = True
                 # Boss projectiles collision with mouth
                 for proj in list(boss.projectiles):
-                    if mouth.rect.colliderect(proj.rect):
+                    # Use shrunken hitboxes for projectiles
+                    hitbox = getattr(proj, 'hitbox', None)
+                    proj_rect = hitbox if hitbox is not None else proj.rect
+                    if mouth.rect.colliderect(proj_rect):
                         match = (mouth.mode == proj.category)
                         if getattr(level_cfg, 'invert_modes', False):
                             match = not match
@@ -326,7 +340,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     contact_push_cd = 2.0
 
             for f in list(foods):
-                if mouth.rect.colliderect(f.rect):
+                # Use shrunken hitbox for food collisions
+                f_rect = getattr(f, 'hitbox', None)
+                f_rect = f_rect if f_rect is not None else f.rect
+                if mouth.rect.colliderect(f_rect):
                     # Optional inverted mode mechanic per-level
                     match = (mouth.mode == f.category)
                     if getattr(level_cfg, 'invert_modes', False):
