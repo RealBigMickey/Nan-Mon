@@ -49,6 +49,10 @@ class LevelBossConfig:
     smooth_motion: bool = False         # if True, use float centers to reduce jitter
     center_bounds: bool = False         # if True, clamp using sprite center (accounts for size)
 
+    # Weak point / lifecycle
+    has_weak_point: bool = True         # if False, boss will not spawn a weak-point target
+    lifetime_seconds: Optional[float] = None  # if set, boss auto-dies after this many seconds active
+
     # Attacks
     attacks_enabled: bool = True
     shot_interval: float = BOSS_SHOT_INTERVAL
@@ -170,7 +174,7 @@ def get_level(n: int) -> LevelConfig:
                 # Content pools (kept)
                 ring_projectiles=BOSS_RING_PROJECTILES + 6,
                 beam_rate=BOSS_BEAM_RATE + 6,
-                bites_to_kill=BOSS_BITES_TO_KILL + 1,
+                bites_to_kill=BOSS_BITES_TO_KILL,
                 ring_foods_salty=salty_foods,
                 ring_foods_sweet=sweet_foods,
                 burst_foods=all_foods,
@@ -180,10 +184,6 @@ def get_level(n: int) -> LevelConfig:
 
     # Level 3: challenging, inverted modes, aggressive boss
     if n == 3:
-        # 指定第三關食物
-        salty_foods = ["BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE"]
-        sweet_foods = ["TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE"]
-        all_foods = salty_foods + sweet_foods
         # 指定第三關食物
         salty_foods = ["BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE"]
         sweet_foods = ["TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE"]
@@ -205,19 +205,28 @@ def get_level(n: int) -> LevelConfig:
             invert_modes=True,
             foods_light=all_foods,
             foods_homing=all_foods,
-                boss=LevelBossConfig(
-                    speed_x=BOSS_SPEED_X * 1.25,
-                    speed_y=BOSS_SPEED_Y * 1.2,
-                    ring_projectiles=BOSS_RING_PROJECTILES + 8,
-                    ring_pair_gap=max(0.2, BOSS_RING_PAIR_GAP - 0.05),
-                    beam_rate=BOSS_BEAM_RATE + 8,
-                    beam_speed=BOSS_BEAM_SPEED * 1.1,
-                    bites_to_kill=BOSS_BITES_TO_KILL + 2,
-                    ring_foods_salty=salty_foods,
-                    ring_foods_sweet=sweet_foods,
-                    burst_foods=all_foods,
-                    beam_kinds=all_foods,
-                ),
+            boss=LevelBossConfig(
+                image_path="nanmon/assets/boss/coffin.png",
+                size=(380, 420),
+                # Minimal movement
+                speed_x=BOSS_SPEED_X * 0.25,
+                speed_y=BOSS_SPEED_Y * 0.15,
+                smooth_motion=True,
+                center_bounds=True,
+                y_top=150,
+                y_bottom=200,
+                y_target=-40,
+                # No weak point; auto end after short duration
+                has_weak_point=False,
+                lifetime_seconds=20.0,
+                # No attacks for Coffin
+                attacks_enabled=False,
+                # Keep content pools in case attacks are enabled in future
+                ring_foods_salty=salty_foods,
+                ring_foods_sweet=sweet_foods,
+                burst_foods=all_foods,
+                beam_kinds=all_foods,
+            ),
         )
 
     # Fallback to level 1 config for unknown inputs

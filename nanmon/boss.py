@@ -121,6 +121,8 @@ class Boss(pygame.sprite.Sprite):
         self.spawn_total = self.spawn_timer
         self.target_y = (self._lvl.boss.y_target if self._lvl else BOSS_Y)
         self.active = False
+        # Optional finite lifetime (no weak-point levels)
+        self.lifetime = float(getattr(self._lvl.boss, 'lifetime_seconds', 0.0)) if self._lvl else 0.0
 
         # Ring attack cadence
         base_ring = (self._lvl.boss.ring_interval if self._lvl else BOSS_RING_INTERVAL)
@@ -194,6 +196,15 @@ class Boss(pygame.sprite.Sprite):
             if self.death_timer <= 0.0:
                 self.dead = True
             return
+        # Lifetime countdown for bosses that auto-end
+        if self.active and self.lifetime and self.lifetime > 0.0:
+            self.lifetime = max(0.0, self.lifetime - dt)
+            if self.lifetime <= 0.0 and not self.dying:
+                # Trigger death animation cleanly
+                self.dying = True
+                self.death_timer = 2.0
+                self._smoke_cd = 0.0
+                return
         # Pause attacks after weak point hit
         if self.pause_timer > 0.0:
             self.pause_timer -= dt
@@ -404,17 +415,21 @@ class Boss(pygame.sprite.Sprite):
             ):
                 self.projectiles.remove(f)
 
-        # Manage weak point target
-        if self.target is None:
-            self.target_cd -= dt
-            if self.target_cd <= 0.0:
-                self.target = Target(self.rect)
-                self.target_cd = TARGET_RESPAWN_BASE
-        else:
-            self.target.update(dt, self.rect)
-            if not self.target.alive:
-                self.target = None
-                self.target_cd = TARGET_RESPAWN_BASE
+        # Manage weak point target (optional per level)
+        want_target = True
+        if self._lvl is not None:
+            want_target = bool(getattr(self._lvl.boss, 'has_weak_point', True))
+        if want_target:
+            if self.target is None:
+                self.target_cd -= dt
+                if self.target_cd <= 0.0:
+                    self.target = Target(self.rect)
+                    self.target_cd = TARGET_RESPAWN_BASE
+            else:
+                self.target.update(dt, self.rect)
+                if not self.target.alive:
+                    self.target = None
+                    self.target_cd = TARGET_RESPAWN_BASE
 
     def shoot_food_burst(self):
         # If attacks are disabled for this boss (e.g., Level 2), do nothing
@@ -599,4 +614,29 @@ class OrangePork(Boss):
             self.rect.centerx = int(round(self._fx))
         except Exception:
             # keep whatever base set
+            pass
+
+
+class Coffin(Boss):
+    """Level 3 boss: coffin sprite, minimal movement, no weak point, passive."""
+    def __init__(self, level_cfg: LevelConfig | None = None):
+        super().__init__(level_cfg)
+        # Enforce no attacks and no weak point regardless of config
+        if self._lvl is not None:
+            try:
+                self._lvl.boss.attacks_enabled = False
+                self._lvl.boss.has_weak_point = False
+            except Exception:
+                pass
+        # Enforce sprite to coffin.png
+        img_path = "nanmon/assets/boss/coffin.png"
+        try:
+            raw = pygame.image.load(img_path).convert_alpha()
+            size = self._lvl.boss.size if self._lvl else self.image.get_size()
+            self.image = pygame.transform.scale(raw, size)
+            prev = self.rect
+            self.rect = self.image.get_rect(center=prev.center)
+            self._fx = float(self.rect.centerx)
+            self._fy = float(self.rect.centery)
+        except Exception:
             pass

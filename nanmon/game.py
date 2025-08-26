@@ -236,14 +236,17 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             if boss is None and progress.ready:
                 # Instantiate boss per level
                 try:
-                    from .boss import DandanBurger, OrangePork
+                    from .boss import DandanBurger, OrangePork, Coffin
                 except Exception:
                     DandanBurger = Boss  # fallback
                     OrangePork = Boss
+                    Coffin = Boss
                 if level_cfg and getattr(level_cfg, 'level', 1) == 2:
                     boss = OrangePork(level_cfg)
                 elif level_cfg and getattr(level_cfg, 'level', 1) == 1:
                     boss = DandanBurger(level_cfg)
+                elif level_cfg and getattr(level_cfg, 'level', 1) == 3:
+                    boss = Coffin(level_cfg)
                 else:
                     boss = Boss(level_cfg)
                 # Attach level config if Boss supports it
