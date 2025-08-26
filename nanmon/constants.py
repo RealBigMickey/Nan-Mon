@@ -52,6 +52,8 @@ FLASH_DURATION = 0.15
 ASSET_BG_PATH = "nanmon/assets/bg"
 ASSET_FOOD_DIR = "nanmon/assets/food"
 FOOD_SIZE = (40, 40)
+# Default shrunken hitbox for foods (1.0 = full sprite rect)
+FOOD_HITBOX_SCALE = 0.8
 # Hats directory
 ASSET_HAT_DIR = "nanmon/assets/hats"
 # ---Teddy add---
@@ -95,7 +97,7 @@ BOSS_HIT_FLASH_TIME = 0.18
 BOSS_BITES_TO_KILL = 4
 
 # When to spawn the boss (seconds); used by Progress bar
-BOSS_SPAWN_TIME = 15.0
+BOSS_SPAWN_TIME = 3.0
 
 # Target visuals that may appear on boss (optional for now)
 TARGET_SIZE = (44, 44)

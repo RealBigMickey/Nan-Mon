@@ -159,11 +159,22 @@ class Boss(pygame.sprite.Sprite):
             # interpolate Y
             start_y = -self.rect.height
             end_y = self.target_y
-            self.rect.top = int(start_y + (end_y - start_y) * ease)
+            # If smooth/center bounds are enabled, position using center to land precisely
+            use_center = bool(getattr(self._lvl.boss, 'smooth_motion', False)) if self._lvl else False
+            if use_center:
+                start_cy = start_y + self.rect.height * 0.5
+                end_cy = float(end_y + self.rect.height * 0.5)
+                cy = start_cy + (end_cy - start_cy) * ease
+                self.rect.centery = int(round(cy))
+            else:
+                self.rect.top = int(start_y + (end_y - start_y) * ease)
             if self.spawn_timer <= 0.0:
                 self.spawning = False
                 self.active = True
-                self.rect.top = end_y
+                if use_center:
+                    self.rect.top = end_y
+                else:
+                    self.rect.top = end_y
             return
         if self.dead:
             return
@@ -209,23 +220,68 @@ class Boss(pygame.sprite.Sprite):
         # Hit flash
         if self.hit_flash > 0:
             self.hit_flash -= dt
-        # Movement
-        self.rect.x += int(self.vx * dt)
-        if self.rect.left < self.left_bound:
-            self.rect.left = self.left_bound
-            self.vx = abs(self.vx)
-        elif self.rect.right > self.right_bound:
-            self.rect.right = self.right_bound
-            self.vx = -abs(self.vx)
-        self.rect.y += int(self.vy * dt)
-        y_top = (self._lvl.boss.y_top if self._lvl else BOSS_Y_TOP)
-        y_bottom = (self._lvl.boss.y_bottom if self._lvl else BOSS_Y_BOTTOM)
-        if self.rect.top < y_top:
-            self.rect.top = y_top
-            self.vy = abs(self.vy)
-        elif self.rect.bottom > y_bottom:
-            self.rect.bottom = y_bottom
-            self.vy = -abs(self.vy)
+        # Movement: support optional smooth float-centers and center-aware bounds per level
+        smooth = bool(getattr(self._lvl.boss, 'smooth_motion', False)) if self._lvl else False
+        center_bounds = bool(getattr(self._lvl.boss, 'center_bounds', False)) if self._lvl else False
+        if smooth:
+            # Initialize float centers if not present
+            if not hasattr(self, '_fx') or not hasattr(self, '_fy'):
+                self._fx = float(self.rect.centerx)
+                self._fy = float(self.rect.centery)
+            self._fx += self.vx * dt
+            self._fy += self.vy * dt
+
+            # Horizontal center bounds (always account for sprite width to avoid offscreen)
+            left_min_cx = self.left_bound + (self.rect.width * 0.5)
+            right_max_cx = self.right_bound - (self.rect.width * 0.5)
+            if self._fx < left_min_cx:
+                self._fx = left_min_cx
+                self.vx = abs(self.vx)
+            elif self._fx > right_max_cx:
+                self._fx = right_max_cx
+                self.vx = -abs(self.vx)
+
+            # Vertical center bounds
+            y_top = (self._lvl.boss.y_top if self._lvl else BOSS_Y_TOP)
+            y_bottom = (self._lvl.boss.y_bottom if self._lvl else BOSS_Y_BOTTOM)
+            if center_bounds:
+                top_min_cy = y_top + (self.rect.height * 0.5)
+                bot_max_cy = y_bottom - (self.rect.height * 0.5)
+                if self._fy < top_min_cy:
+                    self._fy = top_min_cy
+                    self.vy = abs(self.vy)
+                elif self._fy > bot_max_cy:
+                    self._fy = bot_max_cy
+                    self.vy = -abs(self.vy)
+            else:
+                if self._fy - self.rect.height * 0.5 < y_top:
+                    self._fy = y_top + self.rect.height * 0.5
+                    self.vy = abs(self.vy)
+                elif self._fy + self.rect.height * 0.5 > y_bottom:
+                    self._fy = y_bottom - self.rect.height * 0.5
+                    self.vy = -abs(self.vy)
+
+            # Write back
+            self.rect.centerx = int(round(self._fx))
+            self.rect.centery = int(round(self._fy))
+        else:
+            # Original integer-based movement for levels that don't opt in
+            self.rect.x += int(self.vx * dt)
+            if self.rect.left < self.left_bound:
+                self.rect.left = self.left_bound
+                self.vx = abs(self.vx)
+            elif self.rect.right > self.right_bound:
+                self.rect.right = self.right_bound
+                self.vx = -abs(self.vx)
+            self.rect.y += int(self.vy * dt)
+            y_top = (self._lvl.boss.y_top if self._lvl else BOSS_Y_TOP)
+            y_bottom = (self._lvl.boss.y_bottom if self._lvl else BOSS_Y_BOTTOM)
+            if self.rect.top < y_top:
+                self.rect.top = y_top
+                self.vy = abs(self.vy)
+            elif self.rect.bottom > y_bottom:
+                self.rect.bottom = y_bottom
+                self.vy = -abs(self.vy)
 
         # Update existing smoke puffs even while alive
         for s in list(self._smoke):
@@ -255,62 +311,67 @@ class Boss(pygame.sprite.Sprite):
         beam_interval = max(2.5, beam_base * (0.7 + 1.0 * health_ratio))
 
         # Rings: sequential pair
-        self.ring_cd -= dt
-        if self._second_ring_pending is not None:
-            cat, t = self._second_ring_pending
-            t -= dt
-            if t <= 0.0:
-                self.spawn_ring(cat)
-                self._second_ring_pending = None
-            else:
-                self._second_ring_pending = (cat, t)
-        if self.ring_cd <= 0.0 and self._second_ring_pending is None:
-            first = random.choice(["SALTY", "SWEET"])
-            second = "SWEET" if first == "SALTY" else "SALTY"
-            self.spawn_ring(first)
-            gap = (self._lvl.boss.ring_pair_gap if self._lvl else BOSS_RING_PAIR_GAP)
-            self._second_ring_pending = (second, gap)
-            self.ring_cd = ring_interval
+        attacks_on = (self._lvl is None) or getattr(self._lvl.boss, 'attacks_enabled', True)
+        if attacks_on:
+            self.ring_cd -= dt
+            if self._second_ring_pending is not None:
+                cat, t = self._second_ring_pending
+                t -= dt
+                if t <= 0.0:
+                    self.spawn_ring(cat)
+                    self._second_ring_pending = None
+                else:
+                    self._second_ring_pending = (cat, t)
+            if self.ring_cd <= 0.0 and self._second_ring_pending is None:
+                first = random.choice(["SALTY", "SWEET"])
+                second = "SWEET" if first == "SALTY" else "SALTY"
+                self.spawn_ring(first)
+                gap = (self._lvl.boss.ring_pair_gap if self._lvl else BOSS_RING_PAIR_GAP)
+                self._second_ring_pending = (second, gap)
+                self.ring_cd = ring_interval
 
         # Downward burst
-        self.shoot_cd -= dt
-        if self.shoot_cd <= 0.0:
-            self.shoot_food_burst()
-            self.shoot_cd = (self._lvl.boss.shot_interval if self._lvl else BOSS_SHOT_INTERVAL)
+        if attacks_on:
+            self.shoot_cd -= dt
+            if self.shoot_cd <= 0.0:
+                self.shoot_food_burst()
+                self.shoot_cd = (self._lvl.boss.shot_interval if self._lvl else BOSS_SHOT_INTERVAL)
 
-        # Beam attack: sustained stream of one kind towards player (all Doritos or all Soda)
-        self.beam_cd -= dt
-        if self.beam_timer > 0.0:
-            self.beam_timer = max(0.0, self.beam_timer - dt)
-            # Emit foods at a steady rate
-            rate = (self._lvl.boss.beam_rate if self._lvl else BOSS_BEAM_RATE)
-            self.beam_emit_accum += rate * dt
-            while self.beam_emit_accum >= 1.0:
-                self.beam_emit_accum -= 1.0
-                kinds = (self._lvl.boss.beam_kinds if self._lvl else ["DORITOS", "SODA"])
-                kind = self.beam_kind or random.choice(kinds)
-                category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
-                # Aim horizontally at player if provided
-                px = player_pos[0] if player_pos is not None else self.rect.centerx
-                x = px
-                f = Food(
-                    kind,
-                    category,
-                    x,
-                    speed_y=(self._lvl.boss.beam_speed if self._lvl else BOSS_BEAM_SPEED),
-                    homing=False,
-                    spawn_center_y=self.rect.bottom,
-                )
-                # small spread
-                f.vx = random.uniform(-50, 50)
-                self.projectiles.add(f)
-        elif self.beam_cd <= 0.0:
-            # Start a new beam
-            kinds = (self._lvl.boss.beam_kinds if self._lvl else ["DORITOS", "SODA"])  # all same kind
-            self.beam_kind = random.choice(kinds)
-            self.beam_timer = (self._lvl.boss.beam_duration if self._lvl else BOSS_BEAM_DURATION)
-            self.beam_emit_accum = 0.0
-            self.beam_cd = beam_interval
+        # Beam attack: sustained stream of one kind towards player (disabled if attacks_off)
+        if attacks_on:
+            self.beam_cd -= dt
+            if self.beam_timer > 0.0:
+                self.beam_timer = max(0.0, self.beam_timer - dt)
+                # Emit foods at a steady rate
+                rate = (self._lvl.boss.beam_rate if self._lvl else BOSS_BEAM_RATE)
+                self.beam_emit_accum += rate * dt
+                while self.beam_emit_accum >= 1.0:
+                    self.beam_emit_accum -= 1.0
+                    kinds = (self._lvl.boss.beam_kinds if self._lvl else ["DORITOS", "SODA"])
+                    kind = self.beam_kind or random.choice(kinds)
+                    salty_set = {"DORITOS", "BURGERS", "FRIES", "FRIEDCHICKEN", "RIBS", "HOTDOG", "TAIWANBURGER", "STINKYTOFU"}
+                    category = "SALTY" if kind in salty_set else "SWEET"
+                    # Aim horizontally at player if provided
+                    px = player_pos[0] if player_pos is not None else self.rect.centerx
+                    x = px
+                    f = Food(
+                        kind,
+                        category,
+                        x,
+                        speed_y=(self._lvl.boss.beam_speed if self._lvl else BOSS_BEAM_SPEED),
+                        homing=False,
+                        spawn_center_y=self.rect.bottom,
+                    )
+                    # small spread
+                    f.vx = random.uniform(-50, 50)
+                    self.projectiles.add(f)
+            elif self.beam_cd <= 0.0:
+                # Start a new beam
+                kinds = (self._lvl.boss.beam_kinds if self._lvl else ["DORITOS", "SODA"])  # all same kind
+                self.beam_kind = random.choice(kinds)
+                self.beam_timer = (self._lvl.boss.beam_duration if self._lvl else BOSS_BEAM_DURATION)
+                self.beam_emit_accum = 0.0
+                self.beam_cd = beam_interval
 
         # Update projectiles
         for f in list(self.projectiles):
@@ -335,6 +396,9 @@ class Boss(pygame.sprite.Sprite):
                 self.target_cd = TARGET_RESPAWN_BASE
 
     def shoot_food_burst(self):
+        # If attacks are disabled for this boss (e.g., Level 2), do nothing
+        if self._lvl is not None and not getattr(self._lvl.boss, 'attacks_enabled', True):
+            return
         # Boss射食物時音效：boss1_sounds.wav，只播放一次
         if not self._boss_shoot_played and hasattr(self, '_boss_snd') and self._boss_snd:
             try:
@@ -345,7 +409,8 @@ class Boss(pygame.sprite.Sprite):
         foods = (self._lvl.boss.burst_foods if self._lvl else ["DORITOS", "FRIES", "SODA", "ICECREAM"])  # light burst
         for _ in range(2):
             kind = random.choice(foods)
-            category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
+            salty_set = {"DORITOS", "BURGERS", "FRIES", "FRIEDCHICKEN", "RIBS", "HOTDOG", "TAIWANBURGER", "STINKYTOFU"}
+            category = "SALTY" if kind in salty_set else "SWEET"
             f = Food(
                 kind,
                 category,
@@ -465,3 +530,52 @@ class Boss(pygame.sprite.Sprite):
             self.target.draw(surface)
         for f in self.projectiles:
             f.draw(surface)
+
+
+class DandanBurger(Boss):
+    """Level 1 boss: inherits full attack kit from base Boss."""
+    def __init__(self, level_cfg: LevelConfig | None = None):
+        super().__init__(level_cfg)
+        # Ensure attacks remain enabled for Level 1
+        if self._lvl is not None:
+            try:
+                self._lvl.boss.attacks_enabled = True
+            except Exception:
+                pass
+
+
+class OrangePork(Boss):
+    """Level 2 boss: unique sprite; attacks disabled for now, keep weak point and animations."""
+    def __init__(self, level_cfg: LevelConfig | None = None):
+        super().__init__(level_cfg)
+        # Enforce attacks disabled
+        if self._lvl is not None:
+            try:
+                self._lvl.boss.attacks_enabled = False
+            except Exception:
+                pass
+        # Enforce sprite to orange_pork.png if not already applied
+        img_path = "nanmon/assets/boss/orange_pork.png"
+        try:
+            raw = pygame.image.load(img_path).convert_alpha()
+            size = self._lvl.boss.size if self._lvl else self.image.get_size()
+            self.image = pygame.transform.scale(raw, size)
+            # Keep current rect position and size
+            prev = self.rect
+            self.rect = self.image.get_rect(center=prev.center)
+            # Keep float centers aligned with new rect
+            self._fx = float(self.rect.centerx)
+            self._fy = float(self.rect.centery)
+            # Safety: ensure resized sprite remains fully on-screen horizontally
+            left_bound = getattr(self, 'left_bound', 40)
+            right_bound = getattr(self, 'right_bound', WIDTH - 40)
+            min_cx = left_bound + (self.rect.width * 0.5)
+            max_cx = right_bound - (self.rect.width * 0.5)
+            if self._fx < min_cx:
+                self._fx = min_cx
+            elif self._fx > max_cx:
+                self._fx = max_cx
+            self.rect.centerx = int(round(self._fx))
+        except Exception:
+            # keep whatever base set
+            pass

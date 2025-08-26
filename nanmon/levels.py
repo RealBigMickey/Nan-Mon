@@ -45,8 +45,12 @@ class LevelBossConfig:
     # Movement
     speed_x: float = BOSS_SPEED_X
     speed_y: float = BOSS_SPEED_Y
+    # Optional smoothing & bounds mode (per-level)
+    smooth_motion: bool = False         # if True, use float centers to reduce jitter
+    center_bounds: bool = False         # if True, clamp using sprite center (accounts for size)
 
     # Attacks
+    attacks_enabled: bool = True
     shot_interval: float = BOSS_SHOT_INTERVAL
     ring_interval: float = BOSS_RING_INTERVAL
     ring_projectiles: int = BOSS_RING_PROJECTILES
@@ -82,6 +86,7 @@ class LevelConfig:
     spawn_interval_min: float = SPAWN_INTERVAL_MIN
     spawn_interval_max: float = SPAWN_INTERVAL_MAX
     food_fall_speed_range: tuple[float, float] = FOOD_FALL_SPEED_RANGE
+    food_scale: float = 1.0  # visual size multiplier for foods
     homing_fraction: float = HOMING_FRACTION
     max_onscreen_food: int = MAX_ONSCREEN_FOOD
 
@@ -110,7 +115,7 @@ def get_level(n: int) -> LevelConfig:
     if n == 1:
         return LevelConfig(
             level=1,
-            name="Tasty Tutorial",
+            name="Space",
             bg_images=[_bg("game_bg1.png"), _bg("game_bg1.png")],
             bg_scroll_speed=40.0,
             music_path=None,  # no dedicated track yet
@@ -126,16 +131,18 @@ def get_level(n: int) -> LevelConfig:
 
     # Level 2: faster, denser, stronger boss
     if n == 2:
-        sweet_foods = ["BUBBLETEA", "MANGOICE", "TOFUPUDDING"]
-        salty_foods = ["FRIEDCHICKEN", "TAIWANBURGER", "STINKYTOFU"]
+        # Requested Level 2 foods
+        sweet_foods = ["SHAVEDICE", "DONUT", "CUPCAKE"]
+        salty_foods = ["FRIEDCHICKEN", "RIBS", "HOTDOG"]
         all_foods = sweet_foods + salty_foods
         return LevelConfig(
             level=2,
-            name="Snack Storm",
+            name="Sky",
             bg_images=[_bg("game_bg2.jpg"), _bg("game_bg2.jpg")],
             bg_scroll_speed=55.0,
             music_path=None,
-            food_fall_speed_range=(360, 520),
+            food_fall_speed_range=(400, 600),
+            food_scale=1.3,
             homing_fraction=min(1.0, HOMING_FRACTION + 0.12),
             max_onscreen_food=MAX_ONSCREEN_FOOD + 8,
             spawn_interval_min=max(0.18, SPAWN_INTERVAL_MIN - 0.05),
@@ -145,10 +152,24 @@ def get_level(n: int) -> LevelConfig:
             foods_light=all_foods,
             foods_homing=all_foods,
             boss=LevelBossConfig(
-                speed_x=BOSS_SPEED_X * 1.1,
-                speed_y=BOSS_SPEED_Y * 1.1,
-                ring_projectiles=BOSS_RING_PROJECTILES + 4,
-                beam_rate=BOSS_BEAM_RATE + 4,
+                image_path="nanmon/assets/boss/orange_pork.png",
+                size=(400, 360),
+                attacks_enabled=False,  # no attacks for Level 2
+                # Movement tuning to reduce "vibration"
+                speed_x=BOSS_SPEED_X * 0.85,   # was 1.10x
+                speed_y=BOSS_SPEED_Y * 0.60,   # was 1.10x
+                # Place higher on screen and ensure valid vertical band for large sprite
+                y_top=20,
+                y_bottom=420,
+                y_target=50,
+                # Enable smoother motion only; keep bounds edge-based to avoid range collapse
+                smooth_motion=True,
+                center_bounds=False,
+                # Optional: slower, smoother spawn easing
+                spawn_duration=int(BOSS_SPAWN_DURATION * 1.3),
+                # Content pools (kept)
+                ring_projectiles=BOSS_RING_PROJECTILES + 6,
+                beam_rate=BOSS_BEAM_RATE + 6,
                 bites_to_kill=BOSS_BITES_TO_KILL + 1,
                 ring_foods_salty=salty_foods,
                 ring_foods_sweet=sweet_foods,
