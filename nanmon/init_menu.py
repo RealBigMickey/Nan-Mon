@@ -79,6 +79,14 @@ class InitMenu:
         self._preview_pos = (WIDTH // 2, HEIGHT // 2 + 190)
         self._preview_bite_t = 0.0
 
+    @staticmethod
+    def _hat_display_name(hat: str | None) -> str:
+        if not hat:
+            return "None"
+        base = os.path.splitext(os.path.basename(hat))[0]
+        base = base.replace("_", " ").strip()
+        return base.title() if base else "None"
+
     def update(self, dt: float) -> None:
         # animate background
         self.timer += dt
@@ -178,9 +186,8 @@ class InitMenu:
         level_s = self.font_title.render(level_label, True, (255, 255, 0) if self.focus == 0 else WHITE)
         surface.blit(level_s, (WIDTH//2 - level_s.get_width()//2, HEIGHT//2 + 40))
 
-        # Hat selector
-        hat_name = self.selected_hat if self.selected_hat else "None"
-        hat_label = f"Hat: {hat_name}"
+        # Hat selector (pretty name)
+        hat_label = f"Hat: {self._hat_display_name(self.selected_hat)}"
         hat_s = self.font_title.render(hat_label, True, (255, 255, 0) if self.focus == 1 else WHITE)
         surface.blit(hat_s, (WIDTH//2 - hat_s.get_width()//2, HEIGHT//2 + 90))
 
