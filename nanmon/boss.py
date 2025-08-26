@@ -220,9 +220,15 @@ class Boss(pygame.sprite.Sprite):
         # Hit flash
         if self.hit_flash > 0:
             self.hit_flash -= dt
-        # Movement: support optional smooth float-centers and center-aware bounds per level
+        # Movement: support optional smooth float-centers and simple center-based bounds per level
         smooth = bool(getattr(self._lvl.boss, 'smooth_motion', False)) if self._lvl else False
         center_bounds = bool(getattr(self._lvl.boss, 'center_bounds', False)) if self._lvl else False
+        # Define simple center-coordinate limits (independent of sprite size)
+        min_cx = getattr(self, 'left_bound', 40)
+        max_cx = getattr(self, 'right_bound', WIDTH - 40)
+        y_top = (self._lvl.boss.y_top if self._lvl else BOSS_Y_TOP)
+        y_bottom = (self._lvl.boss.y_bottom if self._lvl else BOSS_Y_BOTTOM)
+
         if smooth:
             # Initialize float centers if not present
             if not hasattr(self, '_fx') or not hasattr(self, '_fy'):
@@ -231,29 +237,28 @@ class Boss(pygame.sprite.Sprite):
             self._fx += self.vx * dt
             self._fy += self.vy * dt
 
-            # Horizontal center bounds (always account for sprite width to avoid offscreen)
-            left_min_cx = self.left_bound + (self.rect.width * 0.5)
-            right_max_cx = self.right_bound - (self.rect.width * 0.5)
-            if self._fx < left_min_cx:
-                self._fx = left_min_cx
-                self.vx = abs(self.vx)
-            elif self._fx > right_max_cx:
-                self._fx = right_max_cx
-                self.vx = -abs(self.vx)
-
-            # Vertical center bounds
-            y_top = (self._lvl.boss.y_top if self._lvl else BOSS_Y_TOP)
-            y_bottom = (self._lvl.boss.y_bottom if self._lvl else BOSS_Y_BOTTOM)
             if center_bounds:
-                top_min_cy = y_top + (self.rect.height * 0.5)
-                bot_max_cy = y_bottom - (self.rect.height * 0.5)
-                if self._fy < top_min_cy:
-                    self._fy = top_min_cy
+                # Bounce at simple center bounds
+                if self._fx < min_cx:
+                    self._fx = min_cx
+                    self.vx = abs(self.vx)
+                elif self._fx > max_cx:
+                    self._fx = max_cx
+                    self.vx = -abs(self.vx)
+                if self._fy < y_top:
+                    self._fy = y_top
                     self.vy = abs(self.vy)
-                elif self._fy > bot_max_cy:
-                    self._fy = bot_max_cy
+                elif self._fy > y_bottom:
+                    self._fy = y_bottom
                     self.vy = -abs(self.vy)
             else:
+                # Legacy edge-based constraints
+                if self._fx < self.left_bound + self.rect.width * 0.5:
+                    self._fx = self.left_bound + self.rect.width * 0.5
+                    self.vx = abs(self.vx)
+                elif self._fx > self.right_bound - self.rect.width * 0.5:
+                    self._fx = self.right_bound - self.rect.width * 0.5
+                    self.vx = -abs(self.vx)
                 if self._fy - self.rect.height * 0.5 < y_top:
                     self._fy = y_top + self.rect.height * 0.5
                     self.vy = abs(self.vy)
@@ -265,23 +270,39 @@ class Boss(pygame.sprite.Sprite):
             self.rect.centerx = int(round(self._fx))
             self.rect.centery = int(round(self._fy))
         else:
-            # Original integer-based movement for levels that don't opt in
+            # Integer-based movement
             self.rect.x += int(self.vx * dt)
-            if self.rect.left < self.left_bound:
-                self.rect.left = self.left_bound
-                self.vx = abs(self.vx)
-            elif self.rect.right > self.right_bound:
-                self.rect.right = self.right_bound
-                self.vx = -abs(self.vx)
             self.rect.y += int(self.vy * dt)
-            y_top = (self._lvl.boss.y_top if self._lvl else BOSS_Y_TOP)
-            y_bottom = (self._lvl.boss.y_bottom if self._lvl else BOSS_Y_BOTTOM)
-            if self.rect.top < y_top:
-                self.rect.top = y_top
-                self.vy = abs(self.vy)
-            elif self.rect.bottom > y_bottom:
-                self.rect.bottom = y_bottom
-                self.vy = -abs(self.vy)
+
+            if center_bounds:
+                # Bounce using center coords
+                cx, cy = self.rect.center
+                if cx < min_cx:
+                    self.rect.centerx = min_cx
+                    self.vx = abs(self.vx)
+                elif cx > max_cx:
+                    self.rect.centerx = max_cx
+                    self.vx = -abs(self.vx)
+                if cy < y_top:
+                    self.rect.centery = y_top
+                    self.vy = abs(self.vy)
+                elif cy > y_bottom:
+                    self.rect.centery = y_bottom
+                    self.vy = -abs(self.vy)
+            else:
+                # Legacy edge-based constraints
+                if self.rect.left < self.left_bound:
+                    self.rect.left = self.left_bound
+                    self.vx = abs(self.vx)
+                elif self.rect.right > self.right_bound:
+                    self.rect.right = self.right_bound
+                    self.vx = -abs(self.vx)
+                if self.rect.top < y_top:
+                    self.rect.top = y_top
+                    self.vy = abs(self.vy)
+                elif self.rect.bottom > y_bottom:
+                    self.rect.bottom = y_bottom
+                    self.vy = -abs(self.vy)
 
         # Update existing smoke puffs even while alive
         for s in list(self._smoke):

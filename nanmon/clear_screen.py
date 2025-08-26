@@ -495,7 +495,7 @@ class FinishScreen:
                 hw, hh = hi.get_size()
                 sw = max(1, int(hw * 1.5))
                 sh = max(1, int(hh * 1.5))
-                scaled_hi = pygame.transform.smoothscale(hi, (sw, sh))
+                scaled_hi = pygame.transform.scale(hi, (sw, sh))
                 # slow continuous rotation after reveal using unbounded elapsed
                 angle = max(0.0, (elapsed - 1.55)) * 60.0  # deg/sec
                 rotated_hi = pygame.transform.rotate(scaled_hi, angle)
@@ -528,7 +528,7 @@ class FinishScreen:
                         scale = max_w / name_surf.get_width()
                         new_w = max(1, int(name_surf.get_width() * scale))
                         new_h = max(1, int(name_surf.get_height() * scale))
-                        name_surf = pygame.transform.smoothscale(name_surf, (new_w, new_h))
+                        name_surf = pygame.transform.scale(name_surf, (new_w, new_h))
                     nx = (WIDTH - name_surf.get_width()) // 2
                     ny = ty + title_surf.get_height() + 6
                     surf.blit(name_surf, (nx, ny))

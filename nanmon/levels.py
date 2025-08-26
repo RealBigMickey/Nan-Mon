@@ -119,7 +119,6 @@ def get_level(n: int) -> LevelConfig:
             bg_images=[_bg("game_bg1.png"), _bg("game_bg1.png")],
             bg_scroll_speed=40.0,
             music_path="assets/sounds/level1_backgrounds_sounds.wav",  # 修正: 指定正確音樂路徑
-            music_path="assets/sounds/level1_backgrounds_sounds.wav",  # 修正: 指定正確音樂路徑
             food_fall_speed_range=FOOD_FALL_SPEED_RANGE,
             homing_fraction=HOMING_FRACTION,
             max_onscreen_food=MAX_ONSCREEN_FOOD,
@@ -157,15 +156,15 @@ def get_level(n: int) -> LevelConfig:
                 size=(400, 360),
                 attacks_enabled=False,  # no attacks for Level 2
                 # Movement tuning to reduce "vibration"
-                speed_x=BOSS_SPEED_X * 0.85,   # was 1.10x
-                speed_y=BOSS_SPEED_Y * 0.60,   # was 1.10x
+                speed_x=BOSS_SPEED_X * 5.0,
+                speed_y=BOSS_SPEED_Y * 3.2,
                 # Place higher on screen and ensure valid vertical band for large sprite
                 y_top=20,
-                y_bottom=420,
+                y_bottom=300,  # stricter lower limit (was 420)
                 y_target=50,
-                # Enable smoother motion only; keep bounds edge-based to avoid range collapse
+                # Use simple center-based bounds with smoothing to avoid freezing at edges
                 smooth_motion=True,
-                center_bounds=False,
+                center_bounds=True,
                 # Optional: slower, smoother spawn easing
                 spawn_duration=int(BOSS_SPAWN_DURATION * 1.3),
                 # Content pools (kept)
@@ -193,9 +192,7 @@ def get_level(n: int) -> LevelConfig:
             level=3,
             name="Spice & Sugar Mayhem",
             bg_images=[_bg("game_bg3.jpg"), _bg("game_bg3.jpg")],
-            bg_images=[_bg("game_bg3.jpg"), _bg("game_bg3.jpg")],
             bg_scroll_speed=72.0,
-            music_path="assets/sounds/level3_backgrounds_sounds.wav",
             music_path="assets/sounds/level3_backgrounds_sounds.wav",
             food_fall_speed_range=(380, 560),
             homing_fraction=min(1.0, HOMING_FRACTION + 0.2),
@@ -206,21 +203,6 @@ def get_level(n: int) -> LevelConfig:
             nausea_wrong_eat=NAUSEA_WRONG_EAT,
             nausea_damage_multiplier=1.2,
             invert_modes=True,
-            foods_light=all_foods,
-            foods_homing=all_foods,
-                boss=LevelBossConfig(
-                    speed_x=BOSS_SPEED_X * 1.25,
-                    speed_y=BOSS_SPEED_Y * 1.2,
-                    ring_projectiles=BOSS_RING_PROJECTILES + 8,
-                    ring_pair_gap=max(0.2, BOSS_RING_PAIR_GAP - 0.05),
-                    beam_rate=BOSS_BEAM_RATE + 8,
-                    beam_speed=BOSS_BEAM_SPEED * 1.1,
-                    bites_to_kill=BOSS_BITES_TO_KILL + 2,
-                    ring_foods_salty=salty_foods,
-                    ring_foods_sweet=sweet_foods,
-                    burst_foods=all_foods,
-                    beam_kinds=all_foods,
-                ),
             foods_light=all_foods,
             foods_homing=all_foods,
                 boss=LevelBossConfig(
