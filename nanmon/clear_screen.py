@@ -924,7 +924,8 @@ class FinishScreen:
                             letter = self._final_grade or self._grade_letter()
                         except Exception:
                             letter = None
-                        if letter in ("A", "S"):
+                        # 強制 S 級分數顯示神秘箱動畫
+                        if letter == "S":
                             self._play_hat_unlock(dm, clock)
                         # All ranks continue to next level
                         return ("NEXT_LEVEL", int(self.level) + 1)

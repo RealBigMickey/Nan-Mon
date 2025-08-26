@@ -1,5 +1,6 @@
 import pygame
 import os
+import math
 from .constants import WIDTH, HEIGHT
 
 def draw_earth_bg_anim(surface, anim_state):
@@ -20,7 +21,7 @@ def draw_earth_bg_anim(surface, anim_state):
             # 初始y在畫面頂端外面
             anim_state['y'] = -target_h
             anim_state['target_y'] = (HEIGHT - target_h) // 2
-            anim_state['speed'] = 80  # 很慢的速度 (pixels/sec)
+            anim_state['speed'] = 120  # 速度提升為原本的1.5倍 (pixels/sec)
         except Exception:
             anim_state['img_raw'] = None
             anim_state['done'] = True
@@ -35,6 +36,13 @@ def draw_earth_bg_anim(surface, anim_state):
         cur_h = int(orig_h * scale)
         cur_w = int(orig_w * scale)
         img = pygame.transform.scale(img_raw, (cur_w, cur_h))
+        # 飄動參數
+        float_amplitude = 12  # 飄動幅度（像素）
+        float_period = 2.5    # 完整上下週期（秒）
+        # 記錄飄動時間
+        if 'float_time' not in anim_state:
+            anim_state['float_time'] = 0.0
+        anim_state['float_time'] += dt
         if not anim_state.get('done'):
             if y < target_y:
                 y = min(target_y, y + speed * dt)
@@ -42,8 +50,14 @@ def draw_earth_bg_anim(surface, anim_state):
             else:
                 anim_state['y'] = target_y
                 anim_state['done'] = True
+                anim_state['float_time'] = 0.0  # 飄動從0開始
         rect = img.get_rect()
         rect.centerx = WIDTH // 2
-        rect.top = int(anim_state['y'])
+        # 飄動效果：done時上下微幅擺動
+        if anim_state.get('done'):
+            float_offset = float_amplitude * math.sin(2 * math.pi * anim_state['float_time'] / float_period)
+            rect.top = int(anim_state['y'] + float_offset)
+        else:
+            rect.top = int(anim_state['y'])
         surface.blit(img, rect)
     return anim_state.get('done', False)

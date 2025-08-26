@@ -82,15 +82,16 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     # Optional per-level music
     try:
         if not pygame.mixer.get_init():
-            # Windows某些環境需指定參數
             pygame.mixer.init(frequency=44100, size=-16, channels=2)
-        # 強制指定level1背景音樂
-        music_path = os.path.join(os.path.dirname(__file__), 'assets', 'sounds', 'level1_backgrounds_sounds.wav')
-        if os.path.exists(music_path):
-            pygame.mixer.music.load(music_path)
-            pygame.mixer.music.play(-1)
-            pygame.mixer.music.set_volume(1.0)
-        # else: pass
+        music_path = level_cfg.music_path
+        if music_path:
+            abs_music_path = music_path
+            if not os.path.isabs(music_path):
+                abs_music_path = os.path.join(os.path.dirname(__file__), music_path)
+            if os.path.exists(abs_music_path):
+                pygame.mixer.music.load(abs_music_path)
+                pygame.mixer.music.play(-1)
+                pygame.mixer.music.set_volume(1.0)
     except Exception as e:
         pass
 
@@ -445,7 +446,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 earth_anim_done = draw_earth_bg_anim(frame, earth_anim_state)
             else:
                 draw_earth_bg_anim(frame, earth_anim_state)  # 停在中央
-                 # Press space 文字
+                # 插入 'We have arrived on Earth!' 文字
+                arrived_msg = font.render("We have arrived on Earth!", True, WHITE)
+                frame.blit(arrived_msg, (WIDTH//2 - arrived_msg.get_width()//2, earth_text_y))
+                # Press space 文字
                 space_msg = font.render("Press SPACE to continue", True, WHITE)
                 frame.blit(space_msg, (WIDTH//2 - space_msg.get_width()//2, earth_text_y + 36))
                 # 只有動畫完成後才允許 SPACE 進入結算

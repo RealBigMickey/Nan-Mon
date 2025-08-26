@@ -1,4 +1,3 @@
-# nanmon/food.py
 from __future__ import annotations
 import os
 import random
@@ -14,22 +13,44 @@ from .constants import (
 )
 from .levels import LevelConfig
 
+
+KINDS = [
+    # Base
+    "DORITOS", "BURGERS", "FRIES", "ICECREAM", "SODA", "CAKE",
+    "BUBBLETEA", "MANGOICE", "TOFUPUDDING", "FRIEDCHICKEN", "TAIWANBURGER", "STINKYTOFU",
+    # Level 2
+    "SHAVEDICE", "DONUT", "CUPCAKE", "RIBS", "HOTDOG",
+    # Level 3
+    "BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE", "TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE",
+]
+
 FOOD_IMAGE_FILES = {
-    "DORITOS":   "DORITOS.png",
-    "BURGERS":   "BURGERS.png",
-    "FRIES":     "FRIES.png",
-    "ICECREAM":  "ICECREAM.png",
-    "SODA":      "SODA.png",
-    "CAKE":      "CAKE.png",
+    # Base
+    "DORITOS": "DORITOS.png",
+    "BURGERS": "BURGERS.png",
+    "FRIES": "FRIES.png",
+    "ICECREAM": "ICECREAM.png",
+    "SODA": "SODA.png",
+    "CAKE": "CAKE.png",
+    "BUBBLETEA": "BUBBLETEA.png",
+    "MANGOICE": "MANGOICE.png",
+    "TOFUPUDDING": "TOFUPUDDING.png",
     "FRIEDCHICKEN": "FRIEDCHICKEN.png",
     "TAIWANBURGER": "TAIWANBURGER.png",
     "STINKYTOFU": "STINKYTOFU.png",
-    # New foods (Level 2)
+    # Level 2
     "SHAVEDICE": "SHAVEDICE.png",
     "DONUT": "DONUT.png",
     "CUPCAKE": "CUPCAKE.png",
     "RIBS": "RIBS.png",
     "HOTDOG": "HOTDOG.png",
+    # Level 3
+    "BEEFSOUP": "BEEFSOUP.png",
+    "RICEBOWLCAKE": "RICEBOWLCAKE.png",
+    "TAINANPORRIDGE": "TAINANPORRIDGE.png",
+    "TAINANPUDDING": "TAINANPUDDING.png",
+    "TAINANICECREAM": "TAINANICECREAM.png",
+    "TAINANTOFUICE": "TAINANTOFUICE.png",
 }
 
 def _load_food_image(kind: str) -> pygame.Surface | None:

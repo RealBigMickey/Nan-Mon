@@ -3,12 +3,13 @@ from dataclasses import dataclass, field
 from typing import Dict
 
 KINDS = [
+    # Level 1
     "DORITOS", "BURGERS", "FRIES", "ICECREAM", "SODA", "CAKE",
-    "BUBBLETEA", "MANGOICE", "TOFUPUDDING", "FRIEDCHICKEN", "TAIWANBURGER", "STINKYTOFU",
-    # Level 2 additions
-    "SHAVEDICE", "DONUT", "CUPCAKE", "RIBS", "HOTDOG",
+    # Level 2
+    "SHAVEDICE", "DONUT", "CUPCAKE", "RIBS", "HOTDOG", "FRIEDCHICKEN",
+    # Level 3
+    "BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE", "TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE",
 ]
-
 @dataclass
 class EatenCounters:
     # Total foods eaten (correct + wrong)
