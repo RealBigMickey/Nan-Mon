@@ -1,4 +1,3 @@
-# nanmon/food.py
 from __future__ import annotations
 import os
 import random
@@ -13,6 +12,14 @@ from .constants import (
 )
 from .levels import LevelConfig
 
+
+KINDS = [
+    "DORITOS", "BURGERS", "FRIES", "ICECREAM", "SODA", "CAKE",
+    "BUBBLETEA", "MANGOICE", "TOFUPUDDING", "FRIEDCHICKEN", "TAIWANBURGER", "STINKYTOFU",
+    # 第三關新食物
+    "BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE", "TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE"
+]
+
 FOOD_IMAGE_FILES = {
     "DORITOS":   "DORITOS.png",
     "BURGERS":   "BURGERS.png",
@@ -26,6 +33,13 @@ FOOD_IMAGE_FILES = {
     "FRIEDCHICKEN": "FRIEDCHICKEN.png",
     "TAIWANBURGER": "TAIWANBURGER.png",
     "STINKYTOFU": "STINKYTOFU.png",
+    # 第三關新食物
+    "BEEFSOUP": "BEEFSOUP.png",
+    "RICEBOWLCAKE": "RICEBOWLCAKE.png",
+    "TAINANPORRIDGE": "TAINANPORRIDGE.png",
+    "TAINANPUDDING": "TAINANPUDDING.png",
+    "TAINANICECREAM": "TAINANICECREAM.png",
+    "TAINANTOFUICE": "TAINANTOFUICE.png",
 }
 
 def _load_food_image(kind: str) -> pygame.Surface | None:

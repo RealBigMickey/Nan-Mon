@@ -33,6 +33,7 @@ class Mouth(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=pos)
         self.flash_timer = 0.0
         self.bite_timer = 0.0
+        self.bite_total = 0.18  # 4格咬合動畫總時長（秒），可依需求調整
         # Hybrid movement: a target point moved by keys; mouth eases toward it
         self.target = pygame.Vector2(self.rect.center)
         self.vel = pygame.Vector2(0, 0)
@@ -60,13 +61,21 @@ class Mouth(pygame.sprite.Sprite):
         base = os.path.join("nanmon", "assets", "char")
         mapping = {
             ("SALTY", "LEFT",  "OPEN"): "head_blue_left.png",
-            ("SALTY", "LEFT",  "BITE"): "head_blue_left_bite.png",
-            ("SALTY", "RIGHT", "OPEN"): "head_blue_right.png",
-            ("SALTY", "RIGHT", "BITE"): "head_blue_right_bite.png",
+            ("SALTY", "LEFT",  "BITE1"): "head_blue_left_bite_1.png",
+            ("SALTY", "LEFT",  "BITE2"): "head_blue_left_bite_2.png",
+            ("SALTY", "LEFT",  "BITE3"): "head_blue_left_bite_3.png",
+            ("SALTY", "RIGHT", "OPEN"): "head_blue_left.png",  # 右邊 mirror 左邊
+            ("SALTY", "RIGHT", "BITE1"): "head_blue_left_bite_1.png",
+            ("SALTY", "RIGHT", "BITE2"): "head_blue_left_bite_2.png",
+            ("SALTY", "RIGHT", "BITE3"): "head_blue_left_bite_3.png",
             ("SWEET", "LEFT",  "OPEN"): "head_pink_left.png",
-            ("SWEET", "LEFT",  "BITE"): "head_pink_left_bite.png",
-            ("SWEET", "RIGHT", "OPEN"): "head_pink_right.png",
-            ("SWEET", "RIGHT", "BITE"): "head_pink_right_bite.png",
+            ("SWEET", "LEFT",  "BITE1"): "head_pink_left_bite_1.png",
+            ("SWEET", "LEFT",  "BITE2"): "head_pink_left_bite_2.png",
+            ("SWEET", "LEFT",  "BITE3"): "head_pink_left_bite_3.png",
+            ("SWEET", "RIGHT", "OPEN"): "head_pink_left.png",
+            ("SWEET", "RIGHT", "BITE1"): "head_pink_left_bite_1.png",
+            ("SWEET", "RIGHT", "BITE2"): "head_pink_left_bite_2.png",
+            ("SWEET", "RIGHT", "BITE3"): "head_pink_left_bite_3.png",
         }
         sprites: dict[tuple[str, str, str], pygame.Surface] = {}
         for key, fname in mapping.items():
@@ -80,6 +89,9 @@ class Mouth(pygame.sprite.Sprite):
                 pygame.draw.circle(img, color, (MOUTH_SIZE[0]//2, MOUTH_SIZE[1]//2), min(MOUTH_SIZE)//2)
             # scale to desired mouth size with nearest-neighbor for crisp pixels
             img = pygame.transform.scale(img, MOUTH_SIZE)
+            # 右邊自動 mirror
+            if key[1] == "RIGHT":
+                img = pygame.transform.flip(img, True, False)
             sprites[key] = img
         return sprites
 
@@ -174,15 +186,40 @@ class Mouth(pygame.sprite.Sprite):
         self.stagger_timer = max(self.stagger_timer, duration)
 
     def _update_image(self):
-        state = "BITE" if self.bite_timer > 0 else "OPEN"
-        key = (self.mode, self.facing, state)
+        # 4連續咬合動畫
+        if self.bite_timer > 0:
+            bite_frame = int((self.bite_timer / self.bite_total) * 4)
+            if bite_frame < 1:
+                bite_state = "BITE1"
+            elif bite_frame < 2:
+                bite_state = "BITE2"
+            elif bite_frame < 3:
+                bite_state = "BITE3"
+            else:
+                bite_state = "OPEN"
+        else:
+            bite_state = "OPEN"
+        key = (self.mode, self.facing, bite_state)
         base_img = self._sprites.get(key)
         if base_img is None:
-            # fallback just in case
             base_img = next(iter(self._sprites.values()))
         img = base_img.copy()
+        # 咬合時放大+抖動
+        if bite_state.startswith("BITE"):
+            scale = 1.22
+            w, h = img.get_width(), img.get_height()
+            img = pygame.transform.scale(img, (int(w*scale), int(h*scale)))
+            # 咬合時上下jitter（不裁切底部）
+            jitter_y = random.randint(-12, 12)
+            pad = abs(jitter_y)
+            surf_h = img.get_height() + pad
+            img_jitter = pygame.Surface((img.get_width(), surf_h), pygame.SRCALPHA)
+            base_y = (surf_h - img.get_height()) // 2 + jitter_y
+            img_jitter.blit(img, (0, base_y))
+            # 不加閃光
+            img = img_jitter
         # Only apply flash overlay if not biting; whiten only visible pixels
-        if self.flash_timer > 0 and state != "BITE":
+        if self.flash_timer > 0 and bite_state == "OPEN":
             good = getattr(self, "_flash_good", None)
             if good is True:
                 tint = pygame.Color(180, 255, 180, 90)
@@ -215,7 +252,6 @@ class Mouth(pygame.sprite.Sprite):
         surface.blit(self.image, draw_rect)
 
         if self.dying:
-            # tint the mouth NOW so the hat can be drawn on top later
             overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
             overlay.fill((255, 60, 60, 120))
             tinted = self.image.copy()
@@ -232,10 +268,20 @@ class Mouth(pygame.sprite.Sprite):
             hat_img = self._hat_img_left
             ox, oy = self._hat_offset_left
 
+        # 帽子跟著嘴巴動畫一起動（放大/抖動）
         if hat_img is not None:
-            hx = draw_rect.centerx + int(ox)
-            hy = draw_rect.centery + int(oy)
-            surface.blit(hat_img, (hx, hy))
+            # 嘴巴咬合時帽子也放大
+            scale = 1.0
+            if hasattr(self, 'bite_timer') and self.bite_timer > 0:
+                scale = 1.22
+            hat_w, hat_h = hat_img.get_width(), hat_img.get_height()
+            if scale != 1.0:
+                hat_img_scaled = pygame.transform.scale(hat_img, (int(hat_w*scale), int(hat_h*scale)))
+            else:
+                hat_img_scaled = hat_img
+            hx = draw_rect.centerx + int(ox * scale)
+            hy = draw_rect.centery + int(oy * scale)
+            surface.blit(hat_img_scaled, (hx, hy))
 
     def draw_scaled(self, surface: pygame.Surface, center: Tuple[int, int], scale: float = 1.0):
         """Draw the mouth (and hat) at an arbitrary scale centered at `center`.
@@ -243,24 +289,30 @@ class Mouth(pygame.sprite.Sprite):
         - Offsets are scaled so hats stay aligned.
         """
         # Base (mouth)
+        # 咬合動畫放大/抖動
+        anim_scale = scale
+        jitter_y = 0
+        if hasattr(self, 'bite_timer') and self.bite_timer > 0:
+            anim_scale = scale * 1.22
+            jitter_y = random.randint(-12, 12)
         base_img = self.image
         bw, bh = base_img.get_size()
-        sw = max(1, int(bw * scale))
-        sh = max(1, int(bh * scale))
+        sw = max(1, int(bw * anim_scale))
+        sh = max(1, int(bh * anim_scale))
         scaled_mouth = pygame.transform.scale(base_img, (sw, sh))
-        mouth_rect = scaled_mouth.get_rect(center=center)
+        mouth_rect = scaled_mouth.get_rect(center=(center[0], center[1] + jitter_y))
         surface.blit(scaled_mouth, mouth_rect)
 
-        # Hat on top (if any), scaled with same factor
+        # Hat on top (if any), scaled with同樣factor並加jitter
         hat_img = self._hat_img_right if self.facing == "RIGHT" else self._hat_img_left
         if hat_img is not None:
             hw, hh = hat_img.get_size()
-            hsw = max(1, int(hw * scale))
-            hsh = max(1, int(hh * scale))
+            hsw = max(1, int(hw * anim_scale))
+            hsh = max(1, int(hh * anim_scale))
             scaled_hat = pygame.transform.scale(hat_img, (hsw, hsh))
             ox, oy = self._hat_offset_right if self.facing == "RIGHT" else self._hat_offset_left
-            sox = int(ox * scale)
-            soy = int(oy * scale)
+            sox = int(ox * anim_scale)
+            soy = int(oy * anim_scale)
             hx = mouth_rect.centerx + sox
             hy = mouth_rect.centery + soy
             surface.blit(scaled_hat, (hx, hy))
