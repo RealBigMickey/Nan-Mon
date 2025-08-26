@@ -206,11 +206,12 @@ class InitMenu:
             self.preview_mouth.facing = "RIGHT"
         self.preview_mouth.set_hat(self.selected_hat)
         self.preview_mouth.rect.center = self._preview_pos
-        # Draw 1.5x bigger on the start menu
+        # 關掉 ribbon 顯示（只在初始畫面）
+        self.preview_mouth._ribbon_left = None
+        self.preview_mouth._ribbon_right = None
         try:
             self.preview_mouth.draw_scaled(surface, self._preview_pos, scale=1.5)
         except Exception:
-            # Fallback if draw_scaled unavailable
             self.preview_mouth.draw(surface)
 
     def loop(self, screen_or_dm, clock: pygame.time.Clock):
