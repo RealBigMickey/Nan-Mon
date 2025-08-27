@@ -56,6 +56,8 @@ class Mouth(pygame.sprite.Sprite):
         self.invincible_timer = 0.0
         self.cold_timer = 0.0
         self.cold_speed_scale = 1.0
+        # Mode-switch grace window for special interactions (e.g., beef soup defuse)
+        self.switch_grace_timer = 0.0
 
         # Hat state
         self._hat_name: str | None = None
@@ -67,6 +69,8 @@ class Mouth(pygame.sprite.Sprite):
 
     def toggle_mode(self):
         self.mode = "SWEET" if self.mode == "SALTY" else "SALTY"
+        # 0.3s window to defuse certain foods while overlapping
+        self.switch_grace_timer = 0.3
         self._update_image()
 
     # --- sprite loading ---
@@ -163,6 +167,9 @@ class Mouth(pygame.sprite.Sprite):
             self.flash_timer -= dt
         if self.bite_timer > 0:
             self.bite_timer -= dt
+        # Decay mode-switch grace window timer
+        if self.switch_grace_timer > 0.0:
+            self.switch_grace_timer = max(0.0, self.switch_grace_timer - dt)
         self._update_image()
 
     def flash(self, good: bool):
