@@ -29,6 +29,7 @@ from .clear_screen import FinishScreen
 from .earth_bg_anim import draw_earth_bg_anim
 from .levels import get_level
 from .level2_clear_anim import draw_level2_clear_anim  # level2
+from .level3_clear_anim import draw_level3_clear_anim  # level3
 
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95, start_level: int | None = None):
@@ -170,6 +171,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     earth_anim_state = {}  # 狀態保存於主循環外
     earth_anim_done = False
     l2_done = False
+    l3_done = False
     # Level 3: parry gate state (spawn single beef soup until parried)
     l3_parry_gate = (selected_level == 3)
     l3_parry_done = False
@@ -188,7 +190,9 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
 
     while running:
         dt = clock.tick(FPS) / 1000.0
-        bg.update(dt)  # Teddy add
+        # Stop background scrolling once Level 3 is cleared
+        if not (level_cleared and selected_level == 3):
+            bg.update(dt)  # Teddy add
         elapsed += dt
         # cooldowns
         if contact_push_cd > 0.0:
@@ -536,15 +540,22 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
 
         # --- draw order --- draw to world buffer then to logical frame with shake
         world.fill((0, 0, 0, 0))
-        bg.draw(world, BG_COLOR)
+        # Freeze background when level 3 is cleared (stop scrolling)
+        if level_cleared and selected_level == 3:
+            # Draw current snapshot without further update; bg.update(dt) still ran, but that's OK visually
+            bg.draw(world, BG_COLOR)
+        else:
+            bg.draw(world, BG_COLOR)
         # Boss behind HUD but above background/neck; draw its projectiles with it
         if boss is not None:
             boss.draw(world)
 
         draw_neck(world, mouth.rect, elapsed)
-        for f in foods:
-            f.draw(world)
-        mouth.draw(world)
+        # During Level 3 clear animation, skip drawing gameplay entities to avoid overlap
+        if not (level_cleared and selected_level == 3):
+            for f in foods:
+                f.draw(world)
+            mouth.draw(world)
         # draw world-level smoke (impacts)
         for s in list(world_smoke):
             s.update(dt)
@@ -574,6 +585,24 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 l2_done = draw_level2_clear_anim(frame, l2_anim_state)
                 # 動畫結束後，才允許 SPACE 進到結算畫面
                 if l2_done:
+                    for event in pygame.event.get():
+                        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                            if page_turn_snd:
+                                try:
+                                    page_turn_snd.play()
+                                except Exception:
+                                    pass
+                            waiting_clear_space = False
+                            fade_to_finish = True
+                            fade_finish_time = 0.0
+            elif selected_level == 3:
+                # Level 3: SCHOOL drop + walk-in animation
+                if 'l3_anim_state' not in locals():
+                    l3_anim_state = {}
+                l3_anim_state['mouth_pos'] = mouth.rect.center
+                l3_anim_state['dt'] = dt
+                l3_done = draw_level3_clear_anim(frame, l3_anim_state)
+                if l3_done:
                     for event in pygame.event.get():
                         if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                             if page_turn_snd:
