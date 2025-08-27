@@ -91,6 +91,7 @@ class FinishScreen:
                 pass
         self.mouth.facing = "LEFT"
         self.mouth_scale = 3.5
+        self._equipped_hat = hat
 
         # Collections
         self.flying = []
@@ -822,11 +823,11 @@ class FinishScreen:
         level = self.level
         # different levels have different requirements for ranks
         if level == 1:
-            base = 23
+            base = 7
         elif level == 2:
-            base = 30
+            base = 7
         elif level == 3:
-            base = 40
+            base = 7
         if self.eaten.total == 0:
             final_score = 0
         else:
@@ -928,7 +929,7 @@ class FinishScreen:
                         if letter == "S":
                             self._play_hat_unlock(dm, clock)
                         # All ranks continue to next level
-                        return ("NEXT_LEVEL", int(self.level) + 1)
+                        return ("NEXT_LEVEL", int(self.level) + 1, self._equipped_hat)
 
             keys = pygame.key.get_pressed()
             self.mouth.update(dt, keys)

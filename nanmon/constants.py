@@ -97,7 +97,7 @@ BOSS_HIT_FLASH_TIME = 0.18
 BOSS_BITES_TO_KILL = 4
 
 # When to spawn the boss (seconds); used by Progress bar
-BOSS_SPAWN_TIME = 3.0
+BOSS_SPAWN_TIME = 10.0
 
 # Target visuals that may appear on boss (optional for now)
 TARGET_SIZE = (44, 44)
