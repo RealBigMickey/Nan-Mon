@@ -70,7 +70,7 @@ class Mouth(pygame.sprite.Sprite):
     def toggle_mode(self):
         self.mode = "SWEET" if self.mode == "SALTY" else "SALTY"
         # 0.3s window to defuse certain foods while overlapping
-        self.switch_grace_timer = 0.3
+        self.switch_grace_timer = 0.5
         self._update_image()
 
     # --- sprite loading ---

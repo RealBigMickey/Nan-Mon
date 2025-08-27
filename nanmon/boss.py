@@ -225,6 +225,12 @@ class Boss(pygame.sprite.Sprite):
                 self.target_cd -= dt
                 if self.target_cd <= 0.0:
                     self.target = Target(self.rect)
+                    # Boss 2: extend weak-point lifetime by +2s
+                    try:
+                        if self._lvl and getattr(self._lvl, 'level', 0) == 2:
+                            self.target.timer += 2.0
+                    except Exception:
+                        pass
                     self.target_cd = TARGET_RESPAWN_BASE
             else:
                 self.target.update(dt, self.rect)
@@ -412,6 +418,15 @@ class Boss(pygame.sprite.Sprite):
         # Update projectiles
         for f in list(self.projectiles):
             f.update(dt, (self.rect.centerx, self.rect.bottom))
+            # Allow boss HOTDOGs to split into DOG/BREAD like standard foods
+            spawn_kids = getattr(f, 'spawn_children', None)
+            if spawn_kids:
+                for ch in spawn_kids:
+                    self.projectiles.add(ch)
+                f.spawn_children = None
+                # Remove the now-split parent
+                self.projectiles.remove(f)
+                continue
             if (
                 f.rect.top > HEIGHT + 40
                 or f.rect.right < -80
@@ -428,6 +443,12 @@ class Boss(pygame.sprite.Sprite):
                 self.target_cd -= dt
                 if self.target_cd <= 0.0:
                     self.target = Target(self.rect)
+                    # Boss 2: extend weak-point lifetime by +2s
+                    try:
+                        if self._lvl and getattr(self._lvl, 'level', 0) == 2:
+                            self.target.timer += 2.0
+                    except Exception:
+                        pass
                     self.target_cd = TARGET_RESPAWN_BASE
             else:
                 self.target.update(dt, self.rect)
@@ -662,8 +683,8 @@ class OrangePork(Boss):
                         'foods': None,
                     })
                 elif choice == 's_curve':
-                    # much denser S-shape pattern
-                    self._op_phase = ('s_curve', {'timer': 0.0, 'shots': 10, 'interval': 0.22})
+                    # slightly less dense S-shape pattern
+                    self._op_phase = ('s_curve', {'timer': 0.0, 'shots': 14, 'interval': 0.16})
                 else:
                     # four vertical beams across the screen, from above screen, fast
                     self._op_phase = (
@@ -694,7 +715,8 @@ class OrangePork(Boss):
         elif name == 'x_laser':
             # Build foods once: select 1 salty (not HOTDOG/DONUT) and 1 sweet from level
             if st.get('foods') is None and self._lvl is not None:
-                salty_pool = [k for k in self._lvl.boss.ring_foods_salty if k not in ('HOTDOG', 'DONUT')]
+                # Exclude HOTDOG specifically from the X-laser
+                salty_pool = [k for k in self._lvl.boss.ring_foods_salty if k != 'HOTDOG']
                 sweet_pool = list(self._lvl.boss.ring_foods_sweet)
                 if not salty_pool:
                     salty_pool = ['RIBS', 'FRIEDCHICKEN']
@@ -723,15 +745,16 @@ class OrangePork(Boss):
                 self._op_phase = None
                 self._op_cd = 2.0
         elif name == 's_curve':
-            # Shoot multiple foods per volley with S wobble; very dense
+            # Shoot multiple foods per volley with S wobble; slightly less dense
             st['timer'] = st.get('timer', 0.0) + dt
-            tick = st.get('interval', 0.22)
+            tick = st.get('interval', 0.16)
             if st['shots'] > 0 and st['timer'] >= tick:
                 st['timer'] = 0.0
                 st['shots'] -= 1
                 # Choose any one food from level
                 if self._lvl is not None and self._lvl.boss is not None:
-                    pool = list(set(self._lvl.boss.ring_foods_salty + self._lvl.boss.ring_foods_sweet))
+                    # Exclude HOTDOG from the four-beam attack
+                    pool = [k for k in set(self._lvl.boss.ring_foods_salty + self._lvl.boss.ring_foods_sweet) if k != 'HOTDOG']
                 else:
                     pool = ['DORITOS', 'FRIES', 'ICECREAM', 'SODA']
                 # Aim roughly toward player horizontally
@@ -741,14 +764,15 @@ class OrangePork(Boss):
                     target_x = player_pos[0]
                 dx = float(target_x - origin[0])
                 base_down = 160.0
-                # Spawn 3 with varied wobble and slight vx spread
-                for j, amp in enumerate((140.0, 180.0, 220.0)):
+                # Spawn 4 with varied wobble and slight vx spread
+                for j, amp in enumerate((130.0, 165.0, 200.0, 235.0)):
                     kind = random.choice(pool)
                     category = 'SALTY' if kind in {'DORITOS','BURGERS','FRIES','FRIEDCHICKEN','RIBS','HOTDOG','TAIWANBURGER','STINKYTOFU'} else 'SWEET'
-                    spread = (-60.0, 0.0, 60.0)[j]
-                    vx = max(-120.0, min(120.0, dx * 0.5 + spread))
-                    vy = base_down + j * 30.0
-                    wob_freq = 3.4 + 0.3 * j
+                    spread_vals = (-70.0, -23.0, 23.0, 70.0)
+                    spread = spread_vals[j]
+                    vx = max(-150.0, min(150.0, dx * 0.5 + spread))
+                    vy = base_down + j * 26.0
+                    wob_freq = 3.0 + 0.28 * j
                     self._emit_food(kind, category, origin, (vx, vy), wobble=(amp, wob_freq))
             if st['shots'] <= 0:
                 self._op_phase = None

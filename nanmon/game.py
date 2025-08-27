@@ -271,7 +271,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 if getattr(f, 'remove_me', False):
                     foods.remove(f)
                     continue
-                if f.rect.top > HEIGHT + 10 or f.rect.right < -50 or f.rect.left > WIDTH + 50:
+                # Remove offscreen in any direction, including above when defused flies up
+                if f.rect.top > HEIGHT + 10 or f.rect.right < -50 or f.rect.left > WIDTH + 50 or f.rect.bottom < -50:
                     foods.remove(f)
 
             # Update boss and its projectiles
@@ -359,6 +360,9 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 # Use shrunken hitbox for food collisions
                 f_rect = getattr(f, 'hitbox', None)
                 f_rect = f_rect if f_rect is not None else f.rect
+                if getattr(f, 'neutralized', False):
+                    # Skip collisions for neutralized foods (e.g., defused soup)
+                    continue
                 if mouth.rect.colliderect(f_rect):
                     # Optional inverted mode mechanic per-level
                     match = (mouth.mode == f.category)
@@ -387,6 +391,17 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                                     boss.register_bite()
                                     mouth.knockback(strength=9000.0)
                     else:
+                        # Level 3 special: BEEFSOUP can be defused by quick mode-switch while overlapping
+                        if f.kind == "BEEFSOUP" and getattr(mouth, 'switch_grace_timer', 0.0) > 0.0:
+                            # Mark neutralized and send it flying upward with particles
+                            f.neutralized = True
+                            f.vy = -520.0
+                            f.vx = random.uniform(-120.0, 120.0)
+                            # spawn a few smoke particles at mouth
+                            for _ in range(8):
+                                world_smoke.append(Smoke((mouth.rect.centerx + random.randint(-12, 12), mouth.rect.centery + random.randint(-12, 12))))
+                            # No penalty, do not remove so it can fly off
+                            continue
                         # Count as eaten (wrong) and apply penalty only if not invincible
                         eaten.total += 1
                         if not player_invincible and not mouth.is_invincible:

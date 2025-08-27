@@ -9,7 +9,7 @@ from .constants import (
     FOOD_FALL_SPEED_RANGE, WIDTH, HEIGHT,
     HOMING_STRENGTH_WEAK, HOMING_STRENGTH_STRONG,
     HOMING_RANGE_SCALE, HOMING_MAX_VX,
-    ASSET_FOOD_DIR, FOOD_SIZE,   # 👈 新增
+    ASSET_FOOD_DIR, FOOD_SIZE,
     FOOD_HITBOX_SCALE,
 )
 from .levels import LevelConfig
@@ -19,7 +19,7 @@ KINDS = [
     # Level 1
     "DORITOS", "BURGERS", "FRIES", "ICECREAM", "SODA", "CAKE",
     # Level 2
-        "SHAVEDICE", "DONUT", "CUPCAKE", "RIBS", "HOTDOG", "FRIEDCHICKEN",
+    "SHAVEDICE", "DONUT", "CUPCAKE", "RIBS", "HOTDOG", "FRIEDCHICKEN",
         # HOTDOG splits into these
         "DOG", "BREAD",
     # Level 3
@@ -86,6 +86,8 @@ class Food(pygame.sprite.Sprite):
         self.homing = homing
         self.vx = 0.0
         self.vy = speed_y
+        # When neutralized (e.g., defused soup), skip collisions and let it fly away
+        self.neutralized = False
         # Hitbox scale (relative to current sprite size); defaults to constant
         self.hitbox_scale = float(FOOD_HITBOX_SCALE if hitbox_scale is None else hitbox_scale)
 
