@@ -53,6 +53,7 @@ class Mouth(pygame.sprite.Sprite):
         self.stagger_timer = 0.0
 
         # Status effects
+        self.invincible_timer = 0.0
         self.cold_timer = 0.0
         self.cold_speed_scale = 1.0
 
@@ -62,6 +63,7 @@ class Mouth(pygame.sprite.Sprite):
         self._hat_img_right: pygame.Surface | None = None
         self._hat_src_left: pygame.Surface | None = None
         self._hat_src_right: pygame.Surface | None = None
+        
 
     def toggle_mode(self):
         self.mode = "SWEET" if self.mode == "SALTY" else "SALTY"
@@ -114,6 +116,8 @@ class Mouth(pygame.sprite.Sprite):
             return
 
         # Timers
+        if self.invincible_timer > 0.0:
+            self.invincible_timer = max(0.0, self.invincible_timer - dt)
         if self.stagger_timer > 0:
             self.stagger_timer = max(0.0, self.stagger_timer - dt)
         if self.cold_timer > 0.0:
@@ -250,6 +254,17 @@ class Mouth(pygame.sprite.Sprite):
             draw_rect.x += random.randint(-jitter, jitter)
             draw_rect.y += random.randint(-jitter, jitter)
 
+
+        # Blink while invincible (about 10 Hz)
+        if self.invincible_timer > 0.0:
+            # toggle visibility using timer, no global tick needed
+            if (int(self.invincible_timer * 20) % 2) == 0:
+                pass  # visible this frame
+            else:
+                # Still draw smoke FX & hat alignment logic expects a blit decision.
+                # Skip drawing the base sprite & hat this frame.
+                return
+
         surface.blit(self.image, draw_rect)
 
         if self.dying:
@@ -345,6 +360,14 @@ class Mouth(pygame.sprite.Sprite):
             self._hat_img_right = None
 
     # --- Status API ---
+    @property
+    def is_invincible(self) -> bool:
+        return self.invincible_timer > 0.0
+
+    def set_invincible(self, duration: float = 0.5):
+        # extend rather than overwrite shorter remaining time
+        self.invincible_timer = max(self.invincible_timer, float(duration))
+
     def apply_cold(self, duration: float, speed_scale: float = 0.7):
         try:
             dur = float(duration)

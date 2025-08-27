@@ -122,7 +122,11 @@ class Boss(pygame.sprite.Sprite):
         self.target_y = (self._lvl.boss.y_target if self._lvl else BOSS_Y)
         self.active = False
         # Optional finite lifetime (no weak-point levels)
-        self.lifetime = float(getattr(self._lvl.boss, 'lifetime_seconds', 0.0)) if self._lvl else 0.0
+        if self._lvl:
+            _lt = getattr(self._lvl.boss, 'lifetime_seconds', None)
+            self.lifetime = float(_lt) if (_lt is not None) else 0.0
+        else:
+            self.lifetime = 0.0
 
         # Ring attack cadence
         base_ring = (self._lvl.boss.ring_interval if self._lvl else BOSS_RING_INTERVAL)
@@ -544,14 +548,14 @@ class Boss(pygame.sprite.Sprite):
             if self.dying:
                 # While dying, intensify red instead of whitening
                 t = max(0.0, min(1.0, 1.0 - (self.death_timer / 2.2)))
-                tint = (150 + int(90 * t), 40, 40)
-                alpha = 140
+                tint = (140 + int(70 * t), 40, 40)
+                alpha = 120
             else:
                 t = 1.0 - health_ratio
                 # Stronger red with more damage; slight boost during brief hit_flash
-                r_boost = 30 if self.hit_flash > 0 else 0
-                tint = (min(255, 80 + int(150 * t) + r_boost), 40, 40)
-                alpha = 70 + int(90 * t)
+                r_boost = 18 if self.hit_flash > 0 else 0
+                tint = (min(255, 70 + int(120 * t) + r_boost), 40, 40)
+                alpha = 55 + int(70 * t)
             if alpha > 0:
                 overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
                 overlay.fill((*tint, alpha))
@@ -615,6 +619,161 @@ class OrangePork(Boss):
         except Exception:
             # keep whatever base set
             pass
+
+        # Custom attack state for Level 2
+        self._op_cd = 2.0
+        self._op_phase = None  # (name, state_dict)
+
+    def _emit_food(self, kind: str, category: str, pos: tuple[int, int], vel: tuple[float, float], *, wobble=None):
+        f = Food(kind, category, pos[0], speed_y=vel[1], homing=False, spawn_center_y=pos[1])
+        f.vx = vel[0]
+        # Slightly shrink hitbox for fairness
+        f.hitbox_scale = min(0.9, getattr(f, 'hitbox_scale', 1.0))
+        if wobble is not None:
+            amp, freq = wobble
+            setattr(f, 'wobble_amp', amp)
+            setattr(f, 'wobble_freq', freq)
+            setattr(f, 'wobble_phase', 0.0)
+        self.projectiles.add(f)
+
+    def update(self, dt: float, player_pos: tuple[int, int] | None = None):
+        # Run base for movement, smoke, weak point, and base attacks (which are disabled by config)
+        super().update(dt, player_pos)
+        # Only run custom patterns when active and alive
+        if not self.active or self.dying or self.dead or getattr(self, 'spawning', False):
+            return
+        origin = (self.rect.centerx, self.rect.bottom)
+        self._op_cd -= dt
+        if self._op_phase is None:
+            if self._op_cd <= 0.0:
+                # Randomly choose a pattern
+                self._op_cd = 3.5
+                choice = random.choice(['hotdog_cone', 'x_laser', 's_curve', 'down_beams'])
+                if choice == 'hotdog_cone':
+                    # 3 volleys, 1s apart, each emits 3 HOTDOGs in a cone
+                    self._op_phase = ('hotdog_cone', {'volley': 0, 'timer': 0.0})
+                elif choice == 'x_laser':
+                    self._op_phase = ('x_laser', {
+                        'timer': 4.0,
+                        'angle': random.uniform(0.0, 2*math.pi),
+                        'spin': math.pi,    # wheel-like rotation
+                        'emit_cd': 0.0,
+                        'emit_int': 0.14,   # slightly less dense
+                        'foods': None,
+                    })
+                elif choice == 's_curve':
+                    # much denser S-shape pattern
+                    self._op_phase = ('s_curve', {'timer': 0.0, 'shots': 10, 'interval': 0.22})
+                else:
+                    # four vertical beams across the screen, from above screen, fast
+                    self._op_phase = (
+                        'down_beams',
+                        {
+                            'timer': 4.0,
+                            'emit_cd': 0.0,
+                            'emit_int': 0.08,
+                        }
+                    )
+            return
+        name, st = self._op_phase
+        if name == 'hotdog_cone':
+            st['timer'] = st.get('timer', 0.0) + dt
+            if st['volley'] < 3 and st['timer'] >= 1.0:
+                st['timer'] = 0.0
+                st['volley'] += 1
+                # Cone angles: -20, 0, +20 degrees
+                for deg in (-20, 0, 20):
+                    ang = math.radians(deg)
+                    speed = 300.0
+                    vx = speed * math.sin(ang)
+                    vy = speed * math.cos(ang)
+                    self._emit_food('HOTDOG', 'SALTY', origin, (vx, vy))
+            if st['volley'] >= 3:
+                self._op_phase = None
+                self._op_cd = 2.0
+        elif name == 'x_laser':
+            # Build foods once: select 1 salty (not HOTDOG/DONUT) and 1 sweet from level
+            if st.get('foods') is None and self._lvl is not None:
+                salty_pool = [k for k in self._lvl.boss.ring_foods_salty if k not in ('HOTDOG', 'DONUT')]
+                sweet_pool = list(self._lvl.boss.ring_foods_sweet)
+                if not salty_pool:
+                    salty_pool = ['RIBS', 'FRIEDCHICKEN']
+                if not sweet_pool:
+                    sweet_pool = ['ICECREAM', 'SODA']
+                st['foods'] = (random.choice(salty_pool), random.choice(sweet_pool))
+            st['timer'] = max(0.0, st['timer'] - dt)
+            st['emit_cd'] = st.get('emit_cd', 0.0) - dt
+            st['angle'] = (st.get('angle', 0.0) + st.get('spin', math.pi) * dt) % (2*math.pi)
+            if st['emit_cd'] <= 0.0:
+                st['emit_cd'] = st.get('emit_int', 0.14)
+                kind_a, kind_b = st['foods']
+                base_speed = 380.0
+                ang = st['angle']
+                dirs = [
+                    (math.cos(ang), math.sin(ang), kind_a),
+                    (math.cos(ang+math.pi), math.sin(ang+math.pi), kind_a),
+                    (math.cos(ang+math.pi/2), math.sin(ang+math.pi/2), kind_b),
+                    (math.cos(ang+3*math.pi/2), math.sin(ang+3*math.pi/2), kind_b),
+                ]
+                salty_set = {"DORITOS", "BURGERS", "FRIES", "FRIEDCHICKEN", "RIBS", "HOTDOG", "TAIWANBURGER", "STINKYTOFU"}
+                for dx, dy, kind in dirs:
+                    category = 'SALTY' if kind in salty_set else 'SWEET'
+                    self._emit_food(kind, category, origin, (dx*base_speed, dy*base_speed))
+            if st['timer'] <= 0.0:
+                self._op_phase = None
+                self._op_cd = 2.0
+        elif name == 's_curve':
+            # Shoot multiple foods per volley with S wobble; very dense
+            st['timer'] = st.get('timer', 0.0) + dt
+            tick = st.get('interval', 0.22)
+            if st['shots'] > 0 and st['timer'] >= tick:
+                st['timer'] = 0.0
+                st['shots'] -= 1
+                # Choose any one food from level
+                if self._lvl is not None and self._lvl.boss is not None:
+                    pool = list(set(self._lvl.boss.ring_foods_salty + self._lvl.boss.ring_foods_sweet))
+                else:
+                    pool = ['DORITOS', 'FRIES', 'ICECREAM', 'SODA']
+                # Aim roughly toward player horizontally
+                if player_pos is None:
+                    target_x = self.rect.centerx
+                else:
+                    target_x = player_pos[0]
+                dx = float(target_x - origin[0])
+                base_down = 160.0
+                # Spawn 3 with varied wobble and slight vx spread
+                for j, amp in enumerate((140.0, 180.0, 220.0)):
+                    kind = random.choice(pool)
+                    category = 'SALTY' if kind in {'DORITOS','BURGERS','FRIES','FRIEDCHICKEN','RIBS','HOTDOG','TAIWANBURGER','STINKYTOFU'} else 'SWEET'
+                    spread = (-60.0, 0.0, 60.0)[j]
+                    vx = max(-120.0, min(120.0, dx * 0.5 + spread))
+                    vy = base_down + j * 30.0
+                    wob_freq = 3.4 + 0.3 * j
+                    self._emit_food(kind, category, origin, (vx, vy), wobble=(amp, wob_freq))
+            if st['shots'] <= 0:
+                self._op_phase = None
+                self._op_cd = 2.0
+        elif name == 'down_beams':
+            # Four vertical beams emitted from above screen, moving fast downward
+            st['timer'] = max(0.0, st.get('timer', 0.0) - dt)
+            st['emit_cd'] = st.get('emit_cd', 0.0) - dt
+            if st['emit_cd'] <= 0.0:
+                st['emit_cd'] = st.get('emit_int', 0.08)
+                # choose random kinds each tick
+                if self._lvl is not None and self._lvl.boss is not None:
+                    pool = list(set(self._lvl.boss.ring_foods_salty + self._lvl.boss.ring_foods_sweet))
+                else:
+                    pool = ['DORITOS', 'FRIES', 'ICECREAM', 'SODA']
+                x_positions = [int(WIDTH * frac) for frac in (0.09, 0.36, 0.73, 0.91)]
+                salty_set = {"DORITOS", "BURGERS", "FRIES", "FRIEDCHICKEN", "RIBS", "HOTDOG", "TAIWANBURGER", "STINKYTOFU"}
+                for x in x_positions:
+                    kind = random.choice(pool)
+                    category = 'SALTY' if kind in salty_set else 'SWEET'
+                    # Spawn just above the visible area
+                    self._emit_food(kind, category, (x, -20), (0.0, 560.0))
+            if st['timer'] <= 0.0:
+                self._op_phase = None
+                self._op_cd = 2.0
 
 
 class Coffin(Boss):

@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import random
 from typing import Tuple
+import math
 import pygame
 from .constants import (
     SALTY_COLOR, SWEET_COLOR,
@@ -108,8 +109,10 @@ class Food(pygame.sprite.Sprite):
             self._draw_shape()  # ← 你的原本幾何造型保留當備援
 
         # Special per-kind setup
-        # SHAVEDICE: very slow fall
-        if self.kind == "SHAVEDICE":
+        # Mark if this food originated from a boss emission (spawn_center_y provided)
+        self.from_boss = (spawn_center_y is not None)
+        # SHAVEDICE: very slow fall for world foods; keep boss foods at normal boss speed
+        if self.kind == "SHAVEDICE" and not self.from_boss:
             self.vy = min(self.vy, 140.0)
         # HOTDOG: will split into DOG + BREAD after a short delay (faster so it happens on-screen)
         self._split_timer = (random.uniform(0.4, 0.8) if self.kind == "HOTDOG" else None)
@@ -123,6 +126,9 @@ class Food(pygame.sprite.Sprite):
             self.rect = self.image.get_rect(center=(x, spawn_center_y))
         self.fx = float(self.rect.x)
         self.fy = float(self.rect.y)
+        # Optional wobble state for S-shape trajectories
+        self._wobble_t = 0.0
+        self._wobble_prev = 0.0
 
     @property
     def hitbox(self) -> pygame.Rect:
@@ -166,6 +172,15 @@ class Food(pygame.sprite.Sprite):
         elif self.vx < -HOMING_MAX_VX: self.vx = -HOMING_MAX_VX
         self.fx += self.vx * dt
         self.fy += self.vy * dt
+        # Apply optional horizontal wobble (S-shape)
+        if hasattr(self, 'wobble_amp') and getattr(self, 'wobble_amp'):
+            self._wobble_t += dt
+            freq = float(getattr(self, 'wobble_freq', 4.0))
+            phase = float(getattr(self, 'wobble_phase', 0.0))
+            amp = float(getattr(self, 'wobble_amp', 0.0))
+            off = amp * math.sin(self._wobble_t * freq + phase)
+            self.fx += (off - self._wobble_prev)
+            self._wobble_prev = off
         self.rect.x = int(self.fx)
         self.rect.y = int(self.fy)
 
@@ -177,13 +192,25 @@ class Food(pygame.sprite.Sprite):
                 self._split_timer = 0.0
             if self._split_timer <= 0 and self.spawn_children is None:
                 cx, cy = self.rect.center
-                # Both parts are SALTY, inherit fall speed but diverge horizontally
-                dog = Food("DOG", "SALTY", cx - 10, max(self.vy, 220.0), False, spawn_center_y=cy)
-                bread = Food("BREAD", "SALTY", cx + 10, max(self.vy, 220.0), False, spawn_center_y=cy)
-                dog.vx = -140.0
-                bread.vx = 140.0
+
+                # Horizontal speed based on fall speed (or a floor)
+                hspeed = max(260.0, abs(self.vy))
+
+                # Both parts are SALTY, inherit 0 vertical speed and opposite horizontal speeds
+                dog = Food("DOG", "SALTY", cx - 10, 0.0, False, spawn_center_y=cy)
+                bread = Food("BREAD", "SALTY", cx + 10, 0.0, False, spawn_center_y=cy)
+
+                # Move purely horizontally in opposite directions
+                dog.vx = -hspeed
+                bread.vx = +hspeed
+
+                # No vertical drift
+                dog.vy = 0.0
+                bread.vy = 0.0
+
                 self.spawn_children = [dog, bread]
                 self.remove_me = True
+
 
     def draw(self, surface: pygame.Surface):
         surface.blit(self.image, self.rect)

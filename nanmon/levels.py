@@ -144,7 +144,7 @@ def get_level(n: int) -> LevelConfig:
             name="Sky",
             bg_images=[_bg("game_bg2.jpg"), _bg("game_bg2.jpg")],
             bg_scroll_speed=55.0,
-            music_path=None,
+            music_path="assets/sounds/level2_backgrounds_sounds.wav",
             food_fall_speed_range=(400, 600),
             food_scale=1.3,
             homing_fraction=min(1.0, HOMING_FRACTION + 0.12),
@@ -158,7 +158,7 @@ def get_level(n: int) -> LevelConfig:
             boss=LevelBossConfig(
                 image_path="nanmon/assets/boss/orange_pork.png",
                 size=(400, 360),
-                attacks_enabled=False,  # no attacks for Level 2
+                attacks_enabled=False,  # custom patterns handled in OrangePork class
                 # Movement tuning to reduce "vibration"
                 speed_x=BOSS_SPEED_X * 5.0,
                 speed_y=BOSS_SPEED_Y * 3.2,
@@ -171,6 +171,7 @@ def get_level(n: int) -> LevelConfig:
                 center_bounds=True,
                 # Optional: slower, smoother spawn easing
                 spawn_duration=int(BOSS_SPAWN_DURATION * 1.3),
+                has_weak_point=True,
                 # Content pools (kept)
                 ring_projectiles=BOSS_RING_PROJECTILES + 6,
                 beam_rate=BOSS_BEAM_RATE + 6,
@@ -195,6 +196,7 @@ def get_level(n: int) -> LevelConfig:
             bg_scroll_speed=72.0,
             music_path="assets/sounds/level3_backgrounds_sounds.wav",
             food_fall_speed_range=(380, 560),
+            food_scale=1.5,
             homing_fraction=min(1.0, HOMING_FRACTION + 0.2),
             max_onscreen_food=MAX_ONSCREEN_FOOD + 12,
             spawn_interval_min=max(0.16, SPAWN_INTERVAL_MIN - 0.08),
@@ -213,9 +215,9 @@ def get_level(n: int) -> LevelConfig:
                 speed_y=BOSS_SPEED_Y * 0.15,
                 smooth_motion=True,
                 center_bounds=True,
-                y_top=150,
-                y_bottom=200,
-                y_target=-40,
+                y_top=80,
+                y_bottom=340,
+                y_target=110,
                 # No weak point; auto end after short duration
                 has_weak_point=False,
                 lifetime_seconds=20.0,

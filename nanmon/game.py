@@ -241,10 +241,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     DandanBurger = Boss  # fallback
                     OrangePork = Boss
                     Coffin = Boss
-                if level_cfg and getattr(level_cfg, 'level', 1) == 2:
-                    boss = OrangePork(level_cfg)
-                elif level_cfg and getattr(level_cfg, 'level', 1) == 1:
+                if level_cfg and getattr(level_cfg, 'level', 1) == 1:
                     boss = DandanBurger(level_cfg)
+                elif level_cfg and getattr(level_cfg, 'level', 1) == 2:
+                    boss = OrangePork(level_cfg)
                 elif level_cfg and getattr(level_cfg, 'level', 1) == 3:
                     boss = Coffin(level_cfg)
                 else:
@@ -305,10 +305,13 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                                 pass
                             # Boss foods contribute only a quarter score
                             score += 0.25
-                        if not player_invincible and not match:
+                        # Wrong-eat boss projectile: apply penalty only if not currently invincible
+                        if not player_invincible and not match and not mouth.is_invincible:
                             dmg = BOSS_HIT_DAMAGE_BY_KIND.get(getattr(proj, "kind", ""), BOSS_HIT_DAMAGE)
-                            # Apply per-level multiplier
                             nausea = min(NAUSEA_MAX, nausea + dmg * getattr(level_cfg, 'nausea_damage_multiplier', 1.0))
+                            # Knockback and grant brief i-frames
+                            mouth.knockback(1800.0)
+                            mouth.set_invincible(0.5)
                         boss.projectiles.remove(proj)
                 # Impact when boss just finished dying
                 if (not was_dead) and boss.dead:
@@ -384,14 +387,17 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                                     boss.register_bite()
                                     mouth.knockback(strength=9000.0)
                     else:
-                        # Count as eaten (wrong) and apply nausea if not invincible
+                        # Count as eaten (wrong) and apply penalty only if not invincible
                         eaten.total += 1
-                        if not player_invincible:
+                        if not player_invincible and not mouth.is_invincible:
                             nausea_add = getattr(level_cfg, 'nausea_wrong_eat', NAUSEA_WRONG_EAT)
                             nausea = min(NAUSEA_MAX, nausea + nausea_add)
                             # SHAVEDICE wrong eat: apply cold status (slow + blue tint)
                             if f.kind == "SHAVEDICE":
                                 mouth.apply_cold(duration=2.0, speed_scale=0.7)
+                            # Knockback and grant brief i-frames
+                            mouth.knockback(1800.0)
+                            mouth.set_invincible(0.5)
                     foods.remove(f)
 
             # Boss death ends level
