@@ -801,17 +801,33 @@ class OrangePork(Boss):
 
 
 class Coffin(Boss):
-    """Level 3 boss: coffin sprite, minimal movement, no weak point, passive."""
+    """
+    Level 3 boss:
+      - Only *parried* BEEFSOUP can hurt it (handled in main loop via register_parry_hit()).
+      - Never spawns BEEFSOUP in its own attacks.
+      - After every 2 attacks, drops 1 BEEFSOUP from offscreen top (fast).
+      - Needs 6 parry hits to die.
+      - Moves faster as it takes parry hits (extremely fast near death).
+      - Visual "shield": breathing yellow aura + flash on hit (no texture).
+      - Attacks:
+          1) circle_spiral: foods in a circle around player, 1s start-up, then spiral fire at player
+          2) grid: 3 vertical + 3 horizontal beams from offscreen forming a grid
+          3) shotgun_center: fan from boss center (one kind per burst)
+          4) shotgun_bottom: fan from bottom offscreen (one kind per burst)
+          5) square: perimeter square telegraph, then launch inward toward player
+    """
     def __init__(self, level_cfg: LevelConfig | None = None):
         super().__init__(level_cfg)
-        # Enforce no attacks and no weak point regardless of config
-        if self._lvl is not None:
+        self.lifetime = 0.0
+        if self._lvl is not None and hasattr(self._lvl, "boss"):
             try:
+                self._lvl.boss.lifetime_seconds = 0.0
                 self._lvl.boss.attacks_enabled = False
                 self._lvl.boss.has_weak_point = False
             except Exception:
                 pass
-        # Enforce sprite to coffin.png
+
+        # Sprite override
         img_path = "nanmon/assets/boss/coffin.png"
         try:
             raw = pygame.image.load(img_path).convert_alpha()
@@ -823,3 +839,317 @@ class Coffin(Boss):
             self._fy = float(self.rect.centery)
         except Exception:
             pass
+
+        # Parry-based HP
+        self.parry_hits = 0
+        self.parry_to_kill = 6  # +2 more than before
+
+        # Attack scheduler
+        self._co_cd = 1.6
+        self._co_phase = None
+        self._co_attacks_done = 0
+
+        # Movement/base speed (we’ll scale this dynamically by damage)
+        self._base_vx = (self._lvl.boss.speed_x if self._lvl else BOSS_SPEED_X)
+        self._base_vy = (self._lvl.boss.speed_y if self._lvl else BOSS_SPEED_Y)
+        # Start with something steady
+        self.vx = self._base_vx * 0.8
+        self.vy = self._base_vy * 0.8
+
+        # Food pools (exclude soup from attacks)
+        if self._lvl is not None and self._lvl.boss is not None:
+            salty_pool = [k for k in self._lvl.boss.ring_foods_salty if k != "BEEFSOUP"]
+            sweet_pool = [k for k in self._lvl.boss.ring_foods_sweet if k != "BEEFSOUP"]
+        else:
+            salty_pool = ["DORITOS","FRIES","BURGERS","FRIEDCHICKEN","RIBS","HOTDOG","TAIWANBURGER","STINKYTOFU"]
+            sweet_pool = ["ICECREAM","SODA","CAKE","DONUT","CUPCAKE","TAINANPUDDING","TAINANICECREAM","TAINANTOFUICE"]
+        if not salty_pool: salty_pool = ["FRIES","DORITOS"]
+        if not sweet_pool: sweet_pool = ["ICECREAM","SODA"]
+        self._pool_salty = salty_pool
+        self._pool_sweet = sweet_pool
+
+        # FX state
+        self._breath_t = 0.0  # for shield breathing
+        self._shield_flash = 0.0  # brief flash when hit
+
+        # Reusable working list for attacks
+        self._tmp_objs = []
+
+    # ===== Helpers =====
+    def register_parry_hit(self):
+        """Called when a *player-parried* soup collides with the boss."""
+        if self.dying or self.dead:
+            return
+        self.parry_hits += 1
+        self.hit_flash = 0.12
+        self._shield_flash = 0.18
+        try:
+            if getattr(self, "_hurt_snd", None):
+                self._hurt_snd.play()
+        except Exception:
+            pass
+        self._smoke.append(Smoke((self.rect.centerx + random.randint(-16, 16),
+                                  self.rect.top + random.randint(0, 18))))
+        if self.parry_hits >= self.parry_to_kill:
+            self.dying = True
+            self.death_timer = 2.2
+            self._smoke_cd = 0.0
+
+    def _rand_kind(self):
+        if random.random() < 0.5:
+            return (random.choice(self._pool_salty), "SALTY")
+        return (random.choice(self._pool_sweet), "SWEET")
+
+    def _emit_food(self, kind: str, category: str, pos: tuple[int, int], vel: tuple[float, float], *, wobble=None, hold=False):
+        f = Food(kind, category, pos[0], speed_y=vel[1], homing=False, spawn_center_y=pos[1])
+        f.vx = vel[0]
+        f.hitbox_scale = min(0.92, getattr(f, 'hitbox_scale', 1.0))
+        if wobble is not None:
+            amp, freq = wobble
+            setattr(f, 'wobble_amp', float(amp))
+            setattr(f, 'wobble_freq', float(freq))
+            setattr(f, 'wobble_phase', 0.0)
+        if hold:
+            # freeze until released
+            setattr(f, "hold_motion", True)
+            f.vx, f.vy = 0.0, 0.0
+        self.projectiles.add(f)
+        return f
+
+    def _spawn_parry_soup(self):
+        x = random.randint(int(WIDTH*0.22), int(WIDTH*0.78))
+        f = Food("BEEFSOUP", "SALTY", x, speed_y=300.0, homing=False, spawn_center_y=-40)
+        f.vx = random.uniform(-55.0, 55.0)
+        f.neutralized = False
+        f.parried_by_player = False
+        # explicit defaults
+        setattr(f, "neutralized", False)
+        setattr(f, "parried_by_player", False)
+        setattr(f, "boss_parry_soup", True)
+        self.projectiles.add(f)
+
+
+    # ===== Attacks =====
+    def _start_random_attack(self, player_pos):
+        # every 2 attacks -> spawn one soup to parry
+        if self._co_attacks_done and self._co_attacks_done % 2 == 0:
+            self._spawn_parry_soup()
+        self._co_attacks_done += 1
+
+        self._co_cd = 2.2
+        choice = random.choice(["circle_spiral","grid","shotgun_center","shotgun_bottom","square"])
+        if choice == "circle_spiral":
+            # Less dense circle around player; 1s windup; then spiral release
+            cx = player_pos[0] if player_pos else self.rect.centerx
+            cy = player_pos[1] if player_pos else (self.rect.centery + 80)
+            n = 18
+            radius = 180
+            items = []
+            for i in range(n):
+                ang = 2*math.pi * i / n
+                x = int(cx + radius*math.cos(ang))
+                y = int(cy + radius*math.sin(ang))
+                kind, cat = self._rand_kind()
+                f = self._emit_food(kind, cat, (x, y), (0.0, 0.0), hold=True)
+                items.append((f, ang))
+            self._co_phase = ("circle_spiral", {"items": items, "delay": 1.0, "idx": 0, "tick": 0.08})
+        elif choice == "grid":
+            # 3 vertical + 3 horizontal sweeping beams forming a grid
+            cols = [int(WIDTH*frac) for frac in (0.18, 0.5, 0.82)]
+            rows = [int(HEIGHT*frac) for frac in (0.25, 0.5, 0.75)]
+            self._co_phase = ("grid", {"cols": cols, "rows": rows, "timer": 2.8, "cd": 0.0, "int": 0.09})
+        elif choice == "shotgun_center":
+            # bursts from boss center in a fan (all same kind per burst)
+            self._co_phase = ("shotgun_center", {"bursts": 3, "cd": 0.0, "int": 0.18})
+        elif choice == "shotgun_bottom":
+            # bursts from bottom offscreen, upward fan (all same kind per burst)
+            self._co_phase = ("shotgun_bottom", {"bursts": 3, "cd": 0.0, "int": 0.18})
+        else:
+            # square ring pattern
+            self._co_phase = ("square", {"timer": 2.6, "cd": 0.0, "int": 0.085, "side": 420, "launched": False})
+
+    # ===== Update & Draw =====
+    def update(self, dt: float, player_pos: tuple[int, int] | None = None):
+        # Move + smoke + timers from base
+        super().update(dt, player_pos)
+        if not self.active or self.dying or self.dead or getattr(self, 'spawning', False):
+            return
+
+        # Movement speed scales up with damage (very fast near death)
+        p = self.parry_hits / max(1.0, self.parry_to_kill)
+        speed_scale = 1.0 + 2.4 * (p * p)  # quadratic ramp
+
+        # Desired magnitudes (no sign)
+        want_vx_mag = abs(self._base_vx * 0.9 * speed_scale)
+        want_vy_mag = abs(self._base_vy * 0.9 * speed_scale)
+
+        # Keep current signs set by bounce logic in Boss.update()
+        vx_sign = 1.0 if self.vx >= 0 else -1.0
+        vy_sign = 1.0 if self.vy >= 0 else -1.0
+
+        # Ease toward (sign-respecting) targets
+        k = min(1.0, 6.0 * dt)
+        self.vx += (vx_sign * want_vx_mag - self.vx) * k
+        self.vy += (vy_sign * want_vy_mag - self.vy) * k
+
+        # Extra nudge if we're pinned on any wall (unstick helper)
+        if self.rect.right >= self.right_bound - 1 and self.vx > 0:
+            self.vx = -abs(self.vx)
+        elif self.rect.left <= self.left_bound + 1 and self.vx < 0:
+            self.vx = abs(self.vx)
+
+        # Breath FX timing
+        self._breath_t += dt
+        if self._shield_flash > 0.0:
+            self._shield_flash = max(0.0, self._shield_flash - dt)
+
+        # Attack scheduling
+        self._co_cd -= dt
+        if self._co_phase is None:
+            if self._co_cd <= 0.0:
+                self._start_random_attack(player_pos)
+            return
+
+        name, st = self._co_phase
+        if name == "circle_spiral":
+            st["delay"] -= dt
+            if st["delay"] <= 0.0:
+                st["tick"] -= dt
+                if st["tick"] <= 0.0 and st["idx"] < len(st["items"]):
+                    f, _ang = st["items"][st["idx"]]
+                    if hasattr(f, "hold_motion") and f.hold_motion and f in self.projectiles:
+                        px = player_pos[0] if player_pos else self.rect.centerx
+                        py = player_pos[1] if player_pos else self.rect.centery + 100
+                        dx = px - f.rect.centerx
+                        dy = py - f.rect.centery
+                        L = math.hypot(dx, dy) or 1.0
+                        speed = 340.0
+                        f.vx = speed * dx / L
+                        f.vy = speed * dy / L
+                        f.hold_motion = False
+                    st["idx"] += 1
+                    st["tick"] = 0.08
+                if st["idx"] >= len(st["items"]):
+                    self._co_phase = None
+                    self._co_cd = 1.0
+
+        elif name == "grid":
+            st["timer"] = max(0.0, st["timer"] - dt)
+            st["cd"] -= dt
+            if st["cd"] <= 0.0:
+                st["cd"] = st["int"]
+                # Emit 3 vertical down + 3 horizontal right/left
+                for x in st["cols"]:
+                    kind, cat = self._rand_kind()
+                    self._emit_food(kind, cat, (x, -30), (0.0, 560.0))
+                for y in st["rows"]:
+                    kind, cat = self._rand_kind()
+                    # emit both left->right and right->left from offscreen
+                    self._emit_food(kind, cat, (-30, y), (560.0, 0.0))
+                    self._emit_food(kind, cat, (WIDTH+30, y), (-560.0, 0.0))
+            if st["timer"] <= 0.0:
+                self._co_phase = None
+                self._co_cd = 1.0
+
+        elif name == "shotgun_center":
+            st["cd"] -= dt
+            if st["cd"] <= 0.0 and st["bursts"] > 0:
+                st["cd"] = st["int"]
+                st["bursts"] -= 1
+                # single kind fan
+                kind, cat = self._rand_kind()
+                cx, cy = self.rect.centerx, self.rect.centery + 24
+                angles = [-35, -20, -8, 0, 8, 20, 35]
+                speed = 380.0
+                for a in angles:
+                    rad = math.radians(a)
+                    vx = speed * math.sin(rad)
+                    vy = speed * math.cos(rad)
+                    self._emit_food(kind, cat, (cx, cy), (vx, vy))
+            if st["bursts"] <= 0:
+                self._co_phase = None
+                self._co_cd = 1.2
+
+        elif name == "shotgun_bottom":
+            st["cd"] -= dt
+            if st["cd"] <= 0.0 and st["bursts"] > 0:
+                st["cd"] = st["int"] if "int" in st else 0.26
+                st["bursts"] -= 1
+
+                kind, cat = self._rand_kind()
+                y = HEIGHT + 24
+
+                # Much less dense: narrower fan, fewer columns
+                angles = [-6, 0, 6]           # only 3 lanes instead of 5
+                speed = -340.0                # a bit slower upward
+                columns = 4                   # fewer columns across screen
+
+                for i in range(columns):
+                    x = int(WIDTH * (0.2 + i * 0.2))  # evenly spaced
+                    for a in angles:
+                        rad = math.radians(a)
+                        vx = abs(speed) * 0.18 * math.sin(rad)
+                        vy = speed * math.cos(rad)
+                        self._emit_food(kind, cat, (x, y), (vx, vy))
+
+            # only 2 bursts total instead of 3
+            if st["bursts"] <= 0:
+                self._co_phase = None
+                self._co_cd = 1.2
+
+
+
+        elif name == "square":
+            # Fire FROM boss center -> TOWARD each square target around player, paced
+            st["cd"] -= dt
+            st["timer"] = max(0.0, st["timer"] - dt)
+
+            # When it's time to shoot, aim a batch of bullets at targets
+            if st["cd"] <= 0.0 and st["idx"] < len(st["targets"]):
+                st["cd"] = st["int"]
+
+                # Shoot a few per tick for readability but keep it threatening
+                batch = 6
+                cx, cy = self.rect.centerx, self.rect.centery + 24
+                for _ in range(batch):
+                    if st["idx"] >= len(st["targets"]):
+                        break
+                    tx, ty = st["targets"][st["idx"]]
+                    dx = tx - cx
+                    dy = ty - cy
+                    L = math.hypot(dx, dy) or 1.0
+                    vx = 360.0 * dx / L
+                    vy = 360.0 * dy / L
+                    kind, cat = self._rand_kind()
+                    self._emit_food(kind, cat, (cx, cy), (vx, vy))
+                    st["idx"] += 1
+
+            # End the phase once all shots are done or timer runs out
+            if st["timer"] <= 0.0 or st["idx"] >= len(st["targets"]):
+                self._co_phase = None
+                self._co_cd = 1.0
+
+
+    def draw(self, surface: pygame.Surface):
+        # Draw base sprite and smoke via parent
+        super().draw(surface)
+
+        # === Yellow 'breathing' shield FX (subtle, masked to non-transparent pixels) ===
+        # We tint a copy of the boss sprite and add it back (BLEND_RGB_ADD).
+        # This only affects pixels where the sprite has alpha; fully transparent areas remain invisible.
+        breath = 0.18 + 0.14 * (0.5 * (1.0 + math.sin(self._breath_t * 2.6)))  # subtle
+        if self._shield_flash > 0.0:
+            # brief extra punch on hit
+            k = min(1.0, self._shield_flash / 0.18)
+            breath += 0.25 * k
+
+        if breath > 0.01:
+            tinted = self.image.copy()
+            # Low add so it’s not “way too yellow”
+            y_r = int(60 * breath)    # add to R
+            y_g = int(55 * breath)    # add to G
+            y_b = int(10 * breath)    # tiny B to keep it warm
+            overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
+            overlay.fill((y_r, y_g, y_b, 0))
+            tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+            surface.blit(tinted, self.rect)

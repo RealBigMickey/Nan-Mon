@@ -16,20 +16,20 @@ from .models import EatenCounters
 from .neck import draw_neck
 from .hud import draw_hud
 from .progress import Progress
-from .boss import Boss
+from .boss import Boss, DandanBurger, OrangePork, Coffin
 from .effects import Smoke, ScreenShake
 #--Teddy add start--
-from .init_menu import InitMenu 
-from .background import ScrollingBackground 
-from .constants import ASSET_FOOD_DIR,ASSET_BG_PATH 
+from .init_menu import InitMenu
+from .background import ScrollingBackground
+from .constants import ASSET_FOOD_DIR, ASSET_BG_PATH
 #--Teddy add end--
 from .display_manager import DisplayManager
 from .constants import FONT_PATH
 from .clear_screen import FinishScreen
 from .earth_bg_anim import draw_earth_bg_anim
-import os
 from .levels import get_level
-from .level2_clear_anim import draw_level2_clear_anim #level2
+from .level2_clear_anim import draw_level2_clear_anim  # level2
+
 
 def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, margin: float = 0.95, start_level: int | None = None):
     rng = random.Random(RNG_SEED)
@@ -46,7 +46,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             caption="道地南蠻 — Salty/Sweet",
             bg_color=(BG_COLOR.r, BG_COLOR.g, BG_COLOR.b),
         )
-    except pygame.error as e:
+    except pygame.error:
         return
     clock = pygame.time.Clock()
     font = pygame.font.Font(FONT_PATH, 16)
@@ -93,7 +93,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 pygame.mixer.music.load(abs_music_path)
                 pygame.mixer.music.play(-1)
                 pygame.mixer.music.set_volume(1.0)
-    except Exception as e:
+    except Exception:
         pass
 
     # ---- 背景：兩張圖上下滾動並交替 ----
@@ -102,9 +102,9 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         canvas_size=(WIDTH, HEIGHT),
         speed_y=level_cfg.bg_scroll_speed,
     )
-# --- Teddy add end ---
+    # --- Teddy add end ---
 
-    mouth = Mouth((WIDTH//2, HEIGHT - 140))
+    mouth = Mouth((WIDTH // 2, HEIGHT - 140))
     try:
         if 'selected_hat' in locals() and selected_hat:
             mouth.set_hat(selected_hat)
@@ -170,9 +170,25 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     earth_anim_state = {}  # 狀態保存於主循環外
     earth_anim_done = False
     l2_done = False
+    # Level 3: parry gate state (spawn single beef soup until parried)
+    l3_parry_gate = (selected_level == 3)
+    l3_parry_done = False
+    l3_parry_soup: Food | None = None
+
+    # Helper: detect a truly parried soup striking the Coffin boss
+    def _parried_soup_hits_boss(obj, _boss):
+        return (
+            _boss is not None and isinstance(_boss, Coffin) and
+            getattr(obj, "kind", "") == "BEEFSOUP" and
+            bool(getattr(obj, "neutralized", False)) and
+            bool(getattr(obj, "parried_by_player", False)) and
+            float(getattr(obj, "vy", 0.0)) < 0.0 and
+            obj.rect.colliderect(_boss.rect)
+        )
+
     while running:
         dt = clock.tick(FPS) / 1000.0
-        bg.update(dt) #Teddy add
+        bg.update(dt)  # Teddy add
         elapsed += dt
         # cooldowns
         if contact_push_cd > 0.0:
@@ -223,8 +239,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             if nausea > 0:
                 nausea = max(0.0, nausea - NAUSEA_DECAY_PER_SEC * dt)
 
-            # Standard spawns nearly zero during boss
-            if boss is None:
+            # Standard spawns nearly zero during boss; blocked during L3 parry gate
+            if boss is None and not (l3_parry_gate and not l3_parry_done):
                 spawn_timer += dt
                 if spawn_timer >= next_spawn and len(foods) < level_cfg.max_onscreen_food:
                     foods.add(make_food(rng, level_cfg))
@@ -232,8 +248,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     next_spawn = rng.uniform(level_cfg.spawn_interval_min, level_cfg.spawn_interval_max)
 
             # Spawn boss when progress ready
-            progress.update(dt)
-            if boss is None and progress.ready:
+            # Block boss countdown until L3 parry completed
+            if not (l3_parry_gate and not l3_parry_done):
+                progress.update(dt)
+            if boss is None and progress.ready and not (l3_parry_gate and not l3_parry_done):
                 # Instantiate boss per level
                 try:
                     from .boss import DandanBurger, OrangePork, Coffin
@@ -257,6 +275,17 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 # 播放boss音樂（背景音樂不停止）
                 # 音效檔案：boss1_sounds.wav
                 # 不在boss出現時自動播放音效
+
+            # Level 3 parry gate: ensure a single center BEEFSOUP is present until parried
+            if l3_parry_gate and not l3_parry_done and l3_parry_soup is None:
+                # Singular gate soup falls much slower to be readable
+                speed_y = 220.0
+                # BEEFSOUP is SALTY by design
+                gate = Food("BEEFSOUP", "SALTY", WIDTH // 2, speed_y, False,
+                            scale=getattr(level_cfg, "food_scale", 1.0),
+                            hitbox_scale=getattr(level_cfg, "food_hitbox_scale", None))
+                foods.add(gate)
+                l3_parry_soup = gate
 
             # Update foods
             for f in list(foods):
@@ -282,12 +311,41 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 # Become invincible once boss starts dying
                 if getattr(boss, 'dying', False):
                     player_invincible = True
-                # Boss projectiles collision with mouth
+                # Boss projectiles: parry hits on boss, then collisions with player
                 for proj in list(boss.projectiles):
+                    # If a parried soup from boss pool hits the boss, score the hit and remove it
+                    if _parried_soup_hits_boss(proj, boss):
+                        try:
+                            boss.register_parry_hit()
+                        except Exception:
+                            pass
+                        try:
+                            boss.projectiles.remove(proj)
+                        except Exception:
+                            pass
+                        for _ in range(6):
+                            world_smoke.append(Smoke((proj.rect.centerx + random.randint(-8, 8),
+                                                      proj.rect.centery + random.randint(-8, 8))))
+                        continue
+
                     # Use shrunken hitboxes for projectiles
                     hitbox = getattr(proj, 'hitbox', None)
                     proj_rect = hitbox if hitbox is not None else proj.rect
+
+                    # Player collision with projectiles
                     if mouth.rect.colliderect(proj_rect):
+                        # --- PARRY HAS PRIORITY (boss projectiles) ---
+                        if getattr(proj, "kind", "") == "BEEFSOUP" and getattr(mouth, "switch_grace_timer", 0.0) > 0.0:
+                            proj.neutralized = True
+                            proj.parried_by_player = True
+                            proj.vy = -520.0
+                            proj.vx = random.uniform(-120.0, 120.0)
+                            # Skip damage/removal so it can travel upward and potentially hit the boss
+                            continue
+                        # If already neutralized (parried), ignore collisions with the player
+                        if getattr(proj, 'neutralized', False):
+                            continue
+
                         match = (mouth.mode == proj.category)
                         if getattr(level_cfg, 'invert_modes', False):
                             match = not match
@@ -302,7 +360,6 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                                 eaten.correct += 1
                                 eaten.per_type[proj.kind] += 1
                             except Exception:
-                                # Be robust if a projectile lacks kind or mapping
                                 pass
                             # Boss foods contribute only a quarter score
                             score += 0.25
@@ -314,6 +371,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                             mouth.knockback(1800.0)
                             mouth.set_invincible(0.5)
                         boss.projectiles.remove(proj)
+
                 # Impact when boss just finished dying
                 if (not was_dead) and boss.dead:
                     shake.shake(duration=0.6, magnitude=16)
@@ -327,6 +385,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     for _ in range(22):
                         s = Smoke((cx + random.randint(-60, 60), by - random.randint(0, 20)))
                         world_smoke.append(s)
+
                 # Weak point: if target alive and bite flavor matches, register bite on eat below
                 # Also allow direct circular contact with the weak point (no food required)
                 if boss.active and boss.target is not None and boss.target.alive:
@@ -335,7 +394,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         target_mode = "SWEET" if target_mode == "SALTY" else "SALTY"
                     if mouth.mode == target_mode:
                         t_center = boss.target.rect.center
-                        t_radius = max(boss.target.rect.width, boss.target.rect.height) // 2
+                        t_radius = max(boss.target.rect.width, boss.target.height) // 2 if hasattr(boss.target, 'height') else max(boss.target.rect.width, boss.target.rect.height) // 2
                         if mouth.circle_hit(t_center, radius=int(t_radius * 0.35)):
                             mouth.bite()
                             boss.register_bite()
@@ -356,14 +415,51 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                     mouth.knockback(strength=1200.0)
                     contact_push_cd = 2.0
 
+            # Handle world foods (player collisions and parry)
             for f in list(foods):
                 # Use shrunken hitbox for food collisions
                 f_rect = getattr(f, 'hitbox', None)
                 f_rect = f_rect if f_rect is not None else f.rect
-                if getattr(f, 'neutralized', False):
-                    # Skip collisions for neutralized foods (e.g., defused soup)
+
+                # If a parried soup (world pool) hits the boss, score the hit and remove it
+                if _parried_soup_hits_boss(f, boss):
+                    try:
+                        boss.register_parry_hit()
+                    except Exception:
+                        pass
+                    foods.remove(f)
+                    for _ in range(6):
+                        world_smoke.append(Smoke((f.rect.centerx + random.randint(-8, 8),
+                                                  f.rect.centery + random.randint(-8, 8))))
                     continue
+
+                # Skip player collision if already neutralized (parried)
+                if getattr(f, 'neutralized', False):
+                    continue
+
                 if mouth.rect.colliderect(f_rect):
+                    # --- PARRY HAS PRIORITY (works for sweet->salty and salty->sweet) ---
+                    if f.kind == "BEEFSOUP" and getattr(mouth, "switch_grace_timer", 0.0) > 0.0:
+                        if not getattr(f, "neutralized", False):
+                            f.neutralized = True
+                            f.parried_by_player = True
+                            f.vy = -520.0
+                            f.vx = random.uniform(-120.0, 120.0)
+                            for _ in range(8):
+                                world_smoke.append(Smoke((mouth.rect.centerx + random.randint(-12, 12),
+                                                          mouth.rect.centery + random.randint(-12, 12))))
+                            # L3 gate opens on first successful parry
+                            if l3_parry_gate and not l3_parry_done:
+                                l3_parry_done = True
+                                if menu_sound:
+                                    try:
+                                        menu_sound.play()
+                                    except Exception:
+                                        pass
+                        # IMPORTANT: skip eat/damage logic; let it fly upward to maybe hit boss
+                        continue
+                    # --- END: parry-priority ---
+
                     # Optional inverted mode mechanic per-level
                     match = (mouth.mode == f.category)
                     if getattr(level_cfg, 'invert_modes', False):
@@ -391,17 +487,6 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                                     boss.register_bite()
                                     mouth.knockback(strength=9000.0)
                     else:
-                        # Level 3 special: BEEFSOUP can be defused by quick mode-switch while overlapping
-                        if f.kind == "BEEFSOUP" and getattr(mouth, 'switch_grace_timer', 0.0) > 0.0:
-                            # Mark neutralized and send it flying upward with particles
-                            f.neutralized = True
-                            f.vy = -520.0
-                            f.vx = random.uniform(-120.0, 120.0)
-                            # spawn a few smoke particles at mouth
-                            for _ in range(8):
-                                world_smoke.append(Smoke((mouth.rect.centerx + random.randint(-12, 12), mouth.rect.centery + random.randint(-12, 12))))
-                            # No penalty, do not remove so it can fly off
-                            continue
                         # Count as eaten (wrong) and apply penalty only if not invincible
                         eaten.total += 1
                         if not player_invincible and not mouth.is_invincible:
@@ -414,6 +499,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                             mouth.knockback(1800.0)
                             mouth.set_invincible(0.5)
                     foods.remove(f)
+
+            # If the gate soup disappeared without a parry (ate or fell), respawn another
+            if l3_parry_gate and not l3_parry_done and l3_parry_soup is not None and l3_parry_soup not in foods:
+                l3_parry_soup = None
 
             # Boss death ends level
             if boss is not None and boss.dead:
@@ -511,7 +600,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                             waiting_clear_space = False
                             fade_to_finish = True
                             fade_finish_time = 0.0
-                    
+
         # progress bar
         if not (level_cleared or game_over) and boss is None:
             progress.draw(frame)
@@ -549,7 +638,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 # 不再播放level clear音效
                 fs = FinishScreen(eaten, level=selected_level, score=int(score), hat=(selected_hat if 'selected_hat' in locals() else None))
                 res = fs.loop(dm, clock)
-                # Handle next-level progression (wins) or restart (menu)
+                # On Level 3, return to main menu instead of next level
+                if selected_level == 3:
+                    return "RESTART"
+                # Handle next-level progression (wins) or restart (menu) for other levels
                 if isinstance(res, tuple) and len(res) == 2 and res[0] == "NEXT_LEVEL":
                     next_level = int(res[1])
                     return ("NEXT_LEVEL", next_level)

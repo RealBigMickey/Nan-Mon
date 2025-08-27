@@ -59,7 +59,7 @@ FOOD_IMAGE_FILES = {
 }
 
 def _load_food_image(kind: str) -> pygame.Surface | None:
-    """嘗試載入並縮放食物 PNG，找不到時回傳 None 讓程式走幾何後援。"""
+    """Try to load and scale the PNG; return None to fall back to geometry."""
     filename = FOOD_IMAGE_FILES.get(kind)
     if not filename:
         return None
@@ -79,7 +79,18 @@ def _load_food_image(kind: str) -> pygame.Surface | None:
     return img
 
 class Food(pygame.sprite.Sprite):
-    def __init__(self, kind: str, category: str, x: int, speed_y: float, homing: bool, *, spawn_center_y: int | None = None, scale: float = 1.0, hitbox_scale: float | None = None):
+    def __init__(
+        self,
+        kind: str,
+        category: str,
+        x: int,
+        speed_y: float,
+        homing: bool,
+        *,
+        spawn_center_y: int | None = None,
+        scale: float = 1.0,
+        hitbox_scale: float | None = None
+    ):
         super().__init__()
         self.kind = kind
         self.category = category
@@ -91,7 +102,7 @@ class Food(pygame.sprite.Sprite):
         # Hitbox scale (relative to current sprite size); defaults to constant
         self.hitbox_scale = float(FOOD_HITBOX_SCALE if hitbox_scale is None else hitbox_scale)
 
-        # 先嘗試用圖片；失敗則用原本的幾何畫法
+        # try image first; fallback to geometry
         image = _load_food_image(kind)
         if image is not None:
             # Apply optional scale
@@ -108,15 +119,16 @@ class Food(pygame.sprite.Sprite):
                 base_h = max(1, int(base_h * scale))
             self.base_image = pygame.Surface((base_w, base_h), pygame.SRCALPHA)
             self.image = self.base_image.copy()
-            self._draw_shape()  # ← 你的原本幾何造型保留當備援
+            self._draw_shape()
 
-        # Special per-kind setup
         # Mark if this food originated from a boss emission (spawn_center_y provided)
         self.from_boss = (spawn_center_y is not None)
-        # SHAVEDICE: very slow fall for world foods; keep boss foods at normal boss speed
-        if self.kind == "SHAVEDICE" and not self.from_boss:
+
+        # SHAVEDICE/TAINANICECREAM: very slow fall for world foods; keep boss foods at normal boss speed
+        if self.kind in ("SHAVEDICE", "TAINANICECREAM") and not self.from_boss:
             self.vy = min(self.vy, 140.0)
-        # HOTDOG: will split into DOG + BREAD after a short delay (faster so it happens on-screen)
+
+        # HOTDOG: will split into DOG + BREAD after a short delay
         self._split_timer = (random.uniform(0.4, 0.8) if self.kind == "HOTDOG" else None)
         self.spawn_children = None
         self.remove_me = False
@@ -146,35 +158,55 @@ class Food(pygame.sprite.Sprite):
         return r
 
     def _draw_shape(self):
-        # 這段沿用你既有的幾何圖形繪製（略）。保留可防缺圖。
+        # Simple geometric fallback if an image is missing
         s = self.base_image
         s.fill((0, 0, 0, 0))
         salty = (self.category == "SALTY")
         color = SALTY_COLOR if salty else SWEET_COLOR
         w, h = s.get_size()
-        cx, cy = w//2, h//2
-        # ...（你的原本繪製分支）...
+        cx, cy = w // 2, h // 2
+        # ellipse + border
+        pygame.draw.ellipse(s, (*color[:3], 200), (2, 2, w - 4, h - 4))
+        pygame.draw.ellipse(s, (0, 0, 0, 180), (2, 2, w - 4, h - 4), 2)
+        # little highlight
+        pygame.draw.circle(s, (255, 255, 255, 120), (int(cx * 0.65), int(cy * 0.55)), max(2, w // 10))
 
     def update(self, dt: float, mouth_pos: Tuple[int, int]):
-        # 你的原有追蹤/整體運動邏輯完全保留
         # Homing only if enabled
         if self.homing and mouth_pos is not None:
             target_x = mouth_pos[0]
-            dx = target_x - (self.fx + self.rect.width/2)
-            strong_set = {"BURGERS", "CAKE", "DONUT"}
+            dx = target_x - (self.fx + self.rect.width / 2)
+
+            # Strong baseline for certain kinds; RICEBOWLCAKE is strongest by far
+            strong_set = {"BURGERS", "CAKE", "DONUT", "RICEBOWLCAKE"}
             base = HOMING_STRENGTH_STRONG if self.kind in strong_set else HOMING_STRENGTH_WEAK
+
             # DONUT: very strong tracking
             if self.kind == "DONUT":
                 base *= 2.2
+
+            # RICEBOWLCAKE: strongest tracking
+            if self.kind == "RICEBOWLCAKE":
+                base *= 3.4  # beef this up hard
+                steer = max(-1.0, min(1.0, dx / 70.0))  # tighter steer
+            else:
+                steer = max(-1.0, min(1.0, dx / 90.0))
+
             scale = min(1.0, abs(dx) / HOMING_RANGE_SCALE)
             strength = base * (0.3 + 0.7 * scale)
-            steer = max(-1.0, min(1.0, dx / 90.0))
             self.vx += strength * steer * 60 * dt
-        if self.vx > HOMING_MAX_VX: self.vx = HOMING_MAX_VX
-        elif self.vx < -HOMING_MAX_VX: self.vx = -HOMING_MAX_VX
+
+        # clamp horizontal speed
+        if self.vx > HOMING_MAX_VX:
+            self.vx = HOMING_MAX_VX
+        elif self.vx < -HOMING_MAX_VX:
+            self.vx = -HOMING_MAX_VX
+
+        # integrate
         self.fx += self.vx * dt
         self.fy += self.vy * dt
-        # Apply optional horizontal wobble (S-shape)
+
+        # Optional horizontal wobble (S-shape)
         if hasattr(self, 'wobble_amp') and getattr(self, 'wobble_amp'):
             self._wobble_t += dt
             freq = float(getattr(self, 'wobble_freq', 4.0))
@@ -183,6 +215,7 @@ class Food(pygame.sprite.Sprite):
             off = amp * math.sin(self._wobble_t * freq + phase)
             self.fx += (off - self._wobble_prev)
             self._wobble_prev = off
+
         self.rect.x = int(self.fx)
         self.rect.y = int(self.fy)
 
@@ -213,7 +246,6 @@ class Food(pygame.sprite.Sprite):
                 self.spawn_children = [dog, bread]
                 self.remove_me = True
 
-
     def draw(self, surface: pygame.Surface):
         surface.blit(self.image, self.rect)
 
@@ -227,7 +259,7 @@ def make_food(rng: random.Random, level_cfg: LevelConfig | None = None) -> Food:
             kind = rng.choice(["DORITOS", "FRIES", "ICECREAM", "SODA"])
         category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
         speed_y = rng.uniform(*FOOD_FALL_SPEED_RANGE)
-        x = rng.randint(20, WIDTH-20)
+        x = rng.randint(20, WIDTH - 20)
         homing = (kind in ("BURGERS", "CAKE"))
         return Food(kind, category, x, speed_y, homing)
     else:
@@ -237,11 +269,21 @@ def make_food(rng: random.Random, level_cfg: LevelConfig | None = None) -> Food:
         else:
             pool = level_cfg.foods_light or ["DORITOS", "FRIES", "ICECREAM", "SODA"]
             kind = rng.choice(pool)
-        # Derive category for broader set of foods
-        salty_set = {"DORITOS", "BURGERS", "FRIES", "FRIEDCHICKEN", "RIBS", "HOTDOG", "TAIWANBURGER", "STINKYTOFU"}
+
+        salty_set = {
+            # base salty
+            "DORITOS", "BURGERS", "FRIES", "FRIEDCHICKEN", "RIBS",
+            "HOTDOG", "TAIWANBURGER", "STINKYTOFU",
+            # level 3 salty
+            "BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE",
+        }
+        # everything not in salty_set is SWEET, including:
+        # TAINANPUDDING, TAINANICECREAM, TAINANTOFUICE
+
         category = "SALTY" if kind in salty_set else "SWEET"
+
         speed_y = rng.uniform(*level_cfg.food_fall_speed_range)
-        x = rng.randint(20, WIDTH-20)
+        x = rng.randint(20, WIDTH - 20)
         homing = (kind in tuple(level_cfg.foods_homing))
         scale = getattr(level_cfg, "food_scale", 1.0)
         hitbox_scale = getattr(level_cfg, "food_hitbox_scale", None)
