@@ -58,6 +58,34 @@ FOOD_HITBOX_SCALE = 0.8
 ASSET_HAT_DIR = "nanmon/assets/hats"
 # ---Teddy add---
 
+# Canonical food category mapping (single source of truth)
+# Use this everywhere to avoid scattered SALTY/SWEET declarations.
+FOOD_CATEGORY = {
+	# Level 1
+	"DORITOS": "SALTY",
+	"BURGERS": "SALTY",
+	"FRIES": "SALTY",
+	"ICECREAM": "SWEET",
+	"SODA": "SWEET",
+	"CAKE": "SWEET",
+	# Level 2
+	"SHAVEDICE": "SWEET",
+	"DONUT": "SWEET",
+	"CUPCAKE": "SWEET",
+	"RIBS": "SALTY",
+	"HOTDOG": "SALTY",
+	# HOTDOG split parts
+	"DOG": "SALTY",
+	"BREAD": "SALTY",
+	# Level 3
+	"BEEFSOUP": "SALTY",
+	"RICEBOWLCAKE": "SALTY",
+	"TAINANPORRIDGE": "SALTY",
+	"TAINANPUDDING": "SWEET",
+	"TOFUPUDDING": "SWEET",
+	"TAINANTOFUICE": "SWEET",
+}
+
 # --- Boss & Target additions ---
 # Boss asset and behavior
 ASSET_BOSS_IMAGE = "nanmon/assets/boss/boss.png"

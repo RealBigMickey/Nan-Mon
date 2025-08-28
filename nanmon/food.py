@@ -11,6 +11,7 @@ from .constants import (
     HOMING_RANGE_SCALE, HOMING_MAX_VX,
     ASSET_FOOD_DIR, FOOD_SIZE,
     FOOD_HITBOX_SCALE,
+    FOOD_CATEGORY,
 )
 from .levels import LevelConfig
 
@@ -23,7 +24,7 @@ KINDS = [
         # HOTDOG splits into these
         "DOG", "BREAD",
     # Level 3
-    "BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE", "TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE",
+    "BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE", "TAINANPUDDING", "TOFUPUDDING", "TAINANTOFUICE",
 ]
 
 FOOD_IMAGE_FILES = {
@@ -54,7 +55,7 @@ FOOD_IMAGE_FILES = {
     "RICEBOWLCAKE": "RICEBOWLCAKE.png",
     "TAINANPORRIDGE": "TAINANPORRIDGE.png",
     "TAINANPUDDING": "TAINANPUDDING.png",
-    "TAINANICECREAM": "TAINANICECREAM.png",
+    "TOFUPUDDING": "TOFUPUDDING.png",
     "TAINANTOFUICE": "TAINANTOFUICE.png",
 }
 
@@ -124,8 +125,7 @@ class Food(pygame.sprite.Sprite):
         # Mark if this food originated from a boss emission (spawn_center_y provided)
         self.from_boss = (spawn_center_y is not None)
 
-        # SHAVEDICE/TAINANICECREAM: very slow fall for world foods; keep boss foods at normal boss speed
-        if self.kind in ("SHAVEDICE", "TAINANICECREAM") and not self.from_boss:
+        if self.kind in ("SHAVEDICE", "TOFUPUDDING") and not self.from_boss:
             self.vy = min(self.vy, 140.0)
 
         # HOTDOG: will split into DOG + BREAD after a short delay
@@ -257,7 +257,7 @@ def make_food(rng: random.Random, level_cfg: LevelConfig | None = None) -> Food:
             kind = rng.choice(["BURGERS", "CAKE"])  # defaults for level-less spawn
         else:
             kind = rng.choice(["DORITOS", "FRIES", "ICECREAM", "SODA"])
-        category = "SALTY" if kind in ("DORITOS", "BURGERS", "FRIES") else "SWEET"
+        category = FOOD_CATEGORY.get(kind, "SWEET")
         speed_y = rng.uniform(*FOOD_FALL_SPEED_RANGE)
         x = rng.randint(20, WIDTH - 20)
         homing = (kind in ("BURGERS", "CAKE"))
@@ -269,19 +269,7 @@ def make_food(rng: random.Random, level_cfg: LevelConfig | None = None) -> Food:
         else:
             pool = level_cfg.foods_light or ["DORITOS", "FRIES", "ICECREAM", "SODA"]
             kind = rng.choice(pool)
-
-        salty_set = {
-            # base salty
-            "DORITOS", "BURGERS", "FRIES", "FRIEDCHICKEN", "RIBS",
-            "HOTDOG", "TAIWANBURGER", "STINKYTOFU",
-            # level 3 salty
-            "BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE",
-        }
-        # everything not in salty_set is SWEET, including:
-        # TAINANPUDDING, TAINANICECREAM, TAINANTOFUICE
-
-        category = "SALTY" if kind in salty_set else "SWEET"
-
+        category = FOOD_CATEGORY.get(kind, "SWEET")
         speed_y = rng.uniform(*level_cfg.food_fall_speed_range)
         x = rng.randint(20, WIDTH - 20)
         homing = (kind in tuple(level_cfg.foods_homing))

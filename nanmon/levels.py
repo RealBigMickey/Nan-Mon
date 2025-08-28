@@ -96,7 +96,7 @@ class LevelConfig:
     # Mechanics/modifiers
     nausea_wrong_eat: float = NAUSEA_WRONG_EAT
     nausea_damage_multiplier: float = 1.0
-    invert_modes: bool = False  # if True, SALTY vs SWEET match logic is inverted
+    # invert_modes has been removed
 
     # Food pools for normal spawns
     foods_light: List[str] = field(default_factory=lambda: ["DORITOS", "FRIES", "ICECREAM", "SODA"])
@@ -182,11 +182,7 @@ def get_level(n: int) -> LevelConfig:
     if n == 3:
         # 指定第三關食物
         salty_foods = ["BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE"]
-        sweet_foods = ["TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE"]
-        all_foods = salty_foods + sweet_foods
-        # 指定第三關食物
-        salty_foods = ["BEEFSOUP", "RICEBOWLCAKE", "TAINANPORRIDGE"]
-        sweet_foods = ["TAINANPUDDING", "TAINANICECREAM", "TAINANTOFUICE"]
+        sweet_foods = ["TAINANPUDDING", "TOFUPUDDING", "TAINANTOFUICE"]
         all_foods = salty_foods + sweet_foods
         return LevelConfig(
             level=3,
@@ -202,7 +198,7 @@ def get_level(n: int) -> LevelConfig:
             boss_spawn_time=BOSS_SPAWN_TIME,
             nausea_wrong_eat=NAUSEA_WRONG_EAT,
             nausea_damage_multiplier=1.2,
-            invert_modes=True,
+            # invert_modes has been removed
             foods_light=all_foods,
             foods_homing=all_foods,
                 boss=LevelBossConfig(

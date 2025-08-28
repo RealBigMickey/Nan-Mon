@@ -181,6 +181,11 @@ class Boss(pygame.sprite.Sprite):
                     self.rect.top = end_y
                 else:
                     self.rect.top = end_y
+                # Start boss music once when becoming active
+                try:
+                    self.play_boss_music()
+                except Exception:
+                    pass
             return
         if self.dead:
             return
@@ -641,9 +646,7 @@ class OrangePork(Boss):
             # keep whatever base set
             pass
 
-        # Custom attack state for Level 2
-        self._op_cd = 2.0
-        self._op_phase = None  # (name, state_dict)
+    
 
     def _emit_food(self, kind: str, category: str, pos: tuple[int, int], vel: tuple[float, float], *, wobble=None):
         f = Food(kind, category, pos[0], speed_y=vel[1], homing=False, spawn_center_y=pos[1])
@@ -713,22 +716,25 @@ class OrangePork(Boss):
                 self._op_phase = None
                 self._op_cd = 2.0
         elif name == 'x_laser':
-            # Build foods once: select 1 salty (not HOTDOG/DONUT) and 1 sweet from level
-            if st.get('foods') is None and self._lvl is not None:
-                # Exclude HOTDOG specifically from the X-laser
+            # Build foods once: select 1 salty (not HOTDOG) and 1 sweet from level, store on self
+            if getattr(self, '_op_x_foods', None) is None and self._lvl is not None:
                 salty_pool = [k for k in self._lvl.boss.ring_foods_salty if k != 'HOTDOG']
                 sweet_pool = list(self._lvl.boss.ring_foods_sweet)
                 if not salty_pool:
                     salty_pool = ['RIBS', 'FRIEDCHICKEN']
                 if not sweet_pool:
                     sweet_pool = ['ICECREAM', 'SODA']
-                st['foods'] = (random.choice(salty_pool), random.choice(sweet_pool))
+                self._op_x_foods = (random.choice(salty_pool), random.choice(sweet_pool))
             st['timer'] = max(0.0, st['timer'] - dt)
             st['emit_cd'] = st.get('emit_cd', 0.0) - dt
             st['angle'] = (st.get('angle', 0.0) + st.get('spin', math.pi) * dt) % (2*math.pi)
             if st['emit_cd'] <= 0.0:
                 st['emit_cd'] = st.get('emit_int', 0.14)
-                kind_a, kind_b = st['foods']
+                foods = getattr(self, '_op_x_foods', None)
+                if not foods or len(foods) != 2:
+                    kind_a, kind_b = ('RIBS', 'ICECREAM')
+                else:
+                    kind_a, kind_b = foods
                 base_speed = 380.0
                 ang = st['angle']
                 dirs = [
@@ -744,6 +750,7 @@ class OrangePork(Boss):
             if st['timer'] <= 0.0:
                 self._op_phase = None
                 self._op_cd = 2.0
+                self._op_x_foods = None
         elif name == 's_curve':
             # Shoot multiple foods per volley with S wobble; slightly less dense
             st['timer'] = st.get('timer', 0.0) + dt
@@ -821,9 +828,9 @@ class Coffin(Boss):
         self.lifetime = 0.0
         if self._lvl is not None and hasattr(self._lvl, "boss"):
             try:
-                self._lvl.boss.lifetime_seconds = 0.0
                 self._lvl.boss.attacks_enabled = False
-                self._lvl.boss.has_weak_point = False
+                # Boss 3: no weak point target
+                setattr(self._lvl.boss, 'has_weak_point', False)
             except Exception:
                 pass
 
@@ -831,10 +838,12 @@ class Coffin(Boss):
         img_path = "nanmon/assets/boss/coffin.png"
         try:
             raw = pygame.image.load(img_path).convert_alpha()
-            size = self._lvl.boss.size if self._lvl else self.image.get_size()
-            self.image = pygame.transform.scale(raw, size)
+            # Resize Coffin to the same size as Boss 2: (400, 360)
+            size2 = (400, 360)
+            self.image = pygame.transform.scale(raw, size2)
             prev = self.rect
             self.rect = self.image.get_rect(center=prev.center)
+            # Keep float centers aligned
             self._fx = float(self.rect.centerx)
             self._fy = float(self.rect.centery)
         except Exception:
@@ -862,15 +871,23 @@ class Coffin(Boss):
             sweet_pool = [k for k in self._lvl.boss.ring_foods_sweet if k != "BEEFSOUP"]
         else:
             salty_pool = ["DORITOS","FRIES","BURGERS","FRIEDCHICKEN","RIBS","HOTDOG","TAIWANBURGER","STINKYTOFU"]
-            sweet_pool = ["ICECREAM","SODA","CAKE","DONUT","CUPCAKE","TAINANPUDDING","TAINANICECREAM","TAINANTOFUICE"]
-        if not salty_pool: salty_pool = ["FRIES","DORITOS"]
-        if not sweet_pool: sweet_pool = ["ICECREAM","SODA"]
+            sweet_pool = ["ICECREAM","SODA","CAKE","DONUT","CUPCAKE","TAINANPUDDING","TOFUPUDDING","TAINANTOFUICE"]
+        if not salty_pool:
+            salty_pool = ["FRIES","DORITOS"]
+        if not sweet_pool:
+            sweet_pool = ["ICECREAM","SODA"]
         self._pool_salty = salty_pool
         self._pool_sweet = sweet_pool
 
         # FX state
         self._breath_t = 0.0  # for shield breathing
         self._shield_flash = 0.0  # brief flash when hit
+
+        # Figure-eight motion state (for horizontal 8 path movement)
+        self._path_t = 0.0
+        self._path_anchor = None
+        self._path_ax = 0.0
+        self._path_ay = 0.0
 
         # Reusable working list for attacks
         self._tmp_objs = []
@@ -884,8 +901,9 @@ class Coffin(Boss):
         self.hit_flash = 0.12
         self._shield_flash = 0.18
         try:
-            if getattr(self, "_hurt_snd", None):
-                self._hurt_snd.play()
+            snd = getattr(self, "_hurt_snd", None)
+            if snd:
+                snd.play()
         except Exception:
             pass
         self._smoke.append(Smoke((self.rect.centerx + random.randint(-16, 16),
@@ -917,11 +935,9 @@ class Coffin(Boss):
         return f
 
     def _spawn_parry_soup(self):
-        x = random.randint(int(WIDTH*0.22), int(WIDTH*0.78))
+        x = random.randint(int(WIDTH * 0.22), int(WIDTH * 0.78))
         f = Food("BEEFSOUP", "SALTY", x, speed_y=300.0, homing=False, spawn_center_y=-40)
         f.vx = random.uniform(-55.0, 55.0)
-        f.neutralized = False
-        f.parried_by_player = False
         # explicit defaults
         setattr(f, "neutralized", False)
         setattr(f, "parried_by_player", False)
@@ -965,8 +981,46 @@ class Coffin(Boss):
             # bursts from bottom offscreen, upward fan (all same kind per burst)
             self._co_phase = ("shotgun_bottom", {"bursts": 3, "cd": 0.0, "int": 0.18})
         else:
-            # square ring pattern
-            self._co_phase = ("square", {"timer": 2.6, "cd": 0.0, "int": 0.085, "side": 420, "launched": False})
+            # square ring pattern: precompute perimeter targets around player
+            side = 420
+            px = player_pos[0] if player_pos else self.rect.centerx
+            py = player_pos[1] if player_pos else (self.rect.centery + 80)
+            half = side // 2
+            left = px - half
+            right = px + half
+            top = py - half
+            bottom = py + half
+            # Generate evenly spaced points along the square perimeter
+            perim = []
+            segments = 12  # points per edge (including corners once)
+            for i in range(segments):
+                t = i / (segments - 1)
+                x = int(left + t * (right - left))
+                perim.append((x, top))
+            for i in range(1, segments):  # skip top-right corner duplicate
+                t = i / (segments - 1)
+                y = int(top + t * (bottom - top))
+                perim.append((right, y))
+            for i in range(1, segments):  # skip bottom-right corner duplicate
+                t = i / (segments - 1)
+                x = int(right - t * (right - left))
+                perim.append((x, bottom))
+            for i in range(1, segments - 1):  # skip bottom-left and top-left duplicates
+                t = i / (segments - 1)
+                y = int(bottom - t * (bottom - top))
+                perim.append((left, y))
+            self._co_phase = (
+                "square",
+                {
+                    "timer": 2.6,
+                    "cd": 0.0,
+                    "int": 0.085,
+                    "side": side,
+                    "launched": False,
+                    "targets": perim,
+                    "idx": 0,
+                },
+            )
 
     # ===== Update & Draw =====
     def update(self, dt: float, player_pos: tuple[int, int] | None = None):
@@ -975,28 +1029,30 @@ class Coffin(Boss):
         if not self.active or self.dying or self.dead or getattr(self, 'spawning', False):
             return
 
-        # Movement speed scales up with damage (very fast near death)
-        p = self.parry_hits / max(1.0, self.parry_to_kill)
-        speed_scale = 1.0 + 2.4 * (p * p)  # quadratic ramp
+        # Initialize figure-eight anchor and amplitudes once
+        if self._path_anchor is None:
+            self._path_anchor = (self.rect.centerx, self.rect.centery)
+            # Horizontal amplitude: stay safely within bounds
+            left_bound = getattr(self, 'left_bound', 40)
+            right_bound = getattr(self, 'right_bound', WIDTH - 40)
+            self._path_ax = max(40.0, (right_bound - left_bound - self.rect.width) * 0.35)
+            # Vertical amplitude: subtle crossing
+            top = (self._lvl.boss.y_top if self._lvl else BOSS_Y_TOP)
+            bottom = (self._lvl.boss.y_bottom if self._lvl else BOSS_Y_BOTTOM)
+            self._path_ay = max(24.0, (bottom - top - self.rect.height) * 0.25)
+            # Disable velocity-driven movement; we’ll set position directly
+            self.vx = 0.0
+            self.vy = 0.0
 
-        # Desired magnitudes (no sign)
-        want_vx_mag = abs(self._base_vx * 0.9 * speed_scale)
-        want_vy_mag = abs(self._base_vy * 0.9 * speed_scale)
-
-        # Keep current signs set by bounce logic in Boss.update()
-        vx_sign = 1.0 if self.vx >= 0 else -1.0
-        vy_sign = 1.0 if self.vy >= 0 else -1.0
-
-        # Ease toward (sign-respecting) targets
-        k = min(1.0, 6.0 * dt)
-        self.vx += (vx_sign * want_vx_mag - self.vx) * k
-        self.vy += (vy_sign * want_vy_mag - self.vy) * k
-
-        # Extra nudge if we're pinned on any wall (unstick helper)
-        if self.rect.right >= self.right_bound - 1 and self.vx > 0:
-            self.vx = -abs(self.vx)
-        elif self.rect.left <= self.left_bound + 1 and self.vx < 0:
-            self.vx = abs(self.vx)
+        # Smooth horizontal figure-eight (Gerono lemniscate)
+        self._path_t += dt * 0.9  # speed factor
+        ax = float(self._path_ax)
+        ay = float(self._path_ay)
+        px, py = self._path_anchor
+        ox = ax * math.sin(self._path_t)
+        oy = 0.5 * ay * math.sin(2.0 * self._path_t)
+        self.rect.centerx = int(round(px + ox))
+        self.rect.centery = int(round(py + oy))
 
         # Breath FX timing
         self._breath_t += dt
@@ -1131,25 +1187,37 @@ class Coffin(Boss):
 
 
     def draw(self, surface: pygame.Surface):
-        # Draw base sprite and smoke via parent
-        super().draw(surface)
+        # Custom draw without jitter; keep spawn fade and shield breathing overlay
+        if self.dead:
+            return
 
-        # === Yellow 'breathing' shield FX (subtle, masked to non-transparent pixels) ===
-        # We tint a copy of the boss sprite and add it back (BLEND_RGB_ADD).
-        # This only affects pixels where the sprite has alpha; fully transparent areas remain invisible.
-        breath = 0.18 + 0.14 * (0.5 * (1.0 + math.sin(self._breath_t * 2.6)))  # subtle
+        if getattr(self, 'spawning', False):
+            t = 1.0
+            if getattr(self, 'spawn_total', 0) > 0:
+                t = max(0.0, min(1.0, 1.0 - (self.spawn_timer / self.spawn_total)))
+            img = self.image.copy()
+            img.set_alpha(int(255 * t))
+            surface.blit(img, self.rect)
+        else:
+            surface.blit(self.image, self.rect)
+
+        # Yellow/white breathing shield
+        breath = 0.16 + 0.12 * (0.5 * (1.0 + math.sin(self._breath_t * 2.4)))
         if self._shield_flash > 0.0:
-            # brief extra punch on hit
             k = min(1.0, self._shield_flash / 0.18)
-            breath += 0.25 * k
-
+            breath += 0.22 * k
         if breath > 0.01:
-            tinted = self.image.copy()
-            # Low add so it’s not “way too yellow”
-            y_r = int(60 * breath)    # add to R
-            y_g = int(55 * breath)    # add to G
-            y_b = int(10 * breath)    # tiny B to keep it warm
             overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
+            y_r = int(58 * breath)
+            y_g = int(56 * breath)
+            y_b = int(26 * breath)
             overlay.fill((y_r, y_g, y_b, 0))
+            tinted = self.image.copy()
             tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
             surface.blit(tinted, self.rect)
+
+        # On-top smoke and projectiles
+        for s in self._smoke:
+            s.draw(surface)
+        for f in self.projectiles:
+            f.draw(surface)

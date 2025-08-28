@@ -351,8 +351,6 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                             continue
 
                         match = (mouth.mode == proj.category)
-                        if getattr(level_cfg, 'invert_modes', False):
-                            match = not match
                         mouth.flash(match)
                         if eat_sound:
                             eat_sound.play()
@@ -394,8 +392,6 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 # Also allow direct circular contact with the weak point (no food required)
                 if boss.active and boss.target is not None and boss.target.alive:
                     target_mode = "SALTY" if boss.target.color_key == "BLUE" else "SWEET"
-                    if getattr(level_cfg, 'invert_modes', False):
-                        target_mode = "SWEET" if target_mode == "SALTY" else "SALTY"
                     if mouth.mode == target_mode:
                         t_center = boss.target.rect.center
                         t_radius = max(boss.target.rect.width, boss.target.height) // 2 if hasattr(boss.target, 'height') else max(boss.target.rect.width, boss.target.rect.height) // 2
@@ -464,10 +460,8 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         continue
                     # --- END: parry-priority ---
 
-                    # Optional inverted mode mechanic per-level
+                    # Match mechanic
                     match = (mouth.mode == f.category)
-                    if getattr(level_cfg, 'invert_modes', False):
-                        match = not match
                     mouth.flash(match)
                     if eat_sound:
                         eat_sound.play()
@@ -480,8 +474,6 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                         # Boss weak point damage via correct-eat while target alive and matching mode
                         if boss is not None and boss.active and boss.target is not None and boss.target.alive:
                             target_mode = "SALTY" if boss.target.color_key == "BLUE" else "SWEET"
-                            if getattr(level_cfg, 'invert_modes', False):
-                                target_mode = "SWEET" if target_mode == "SALTY" else "SALTY"
                             if mouth.mode == target_mode:
                                 # Use circle hit instead of rect overlap for reliability
                                 t_center = boss.target.rect.center
