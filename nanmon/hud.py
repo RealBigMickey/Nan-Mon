@@ -20,35 +20,6 @@ def draw_hud(surface: pygame.Surface, font: pygame.font.Font, mouth: Mouth, naus
     fill_col = pygame.Color(255, 120, 120) if nausea >= NAUSEA_MAX else pygame.Color(200, 200, 50)
     pygame.draw.rect(surface, fill_col, pygame.Rect(bar_x, bar_y, fill_w, bar_h))
 
-    count_text = f"Eaten total: {eaten.total}  Score: {score}"
-    txt2 = font.render(count_text, True, WHITE)
-    surface.blit(txt2, (12, HEIGHT - 26))
-
-    # 每種食物換行顯示且靠左
-    food_types = ["DORITOS","BURGERS","FRIES","ICECREAM","SODA","CAKE"]
-    # 預先計算高度，讓整體往上移動
-    sample_txt = font.render("SAMPLE", True, WHITE)
-    block_height = len(food_types) * (sample_txt.get_height() + 2)
-    y = HEIGHT - 26 - 20 - block_height
-    for k in food_types:
-        line = f"{k}: {eaten.per_type[k]}"
-        txt = font.render(line, True, WHITE)
-        surface.blit(txt, (12, y))
-        y += txt.get_height() + 2
-
-    if legend_alpha > 0:
-        legend = "Salty: triangle/burger/fries | Sweet: circle/soda/cake"
-        # 自動縮小字型直到不超出螢幕
-        font_size = font.get_height()
-        legend_font = font
-        legend_surf = legend_font.render(legend, True, WHITE)
-        while legend_surf.get_width() > WIDTH - 40 and font_size > 8:
-            font_size -= 2
-            legend_font = pygame.font.Font(FONT_PATH, font_size)
-            legend_surf = legend_font.render(legend, True, WHITE)
-        legend_surf.set_alpha(legend_alpha)
-        surface.blit(legend_surf, (WIDTH//2 - legend_surf.get_width()//2, 10 + txt.get_height() + 4))
-
     if level_cleared:
         msg = font.render("LEVEL CLEARED!", True, WHITE)
         surface.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2 - 30))

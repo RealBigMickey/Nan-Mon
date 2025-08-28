@@ -813,7 +813,7 @@ class Coffin(Boss):
       - Only *parried* BEEFSOUP can hurt it (handled in main loop via register_parry_hit()).
       - Never spawns BEEFSOUP in its own attacks.
       - After every 2 attacks, drops 1 BEEFSOUP from offscreen top (fast).
-      - Needs 6 parry hits to die.
+      - Needs 4 parry hits to die.
       - Moves faster as it takes parry hits (extremely fast near death).
       - Visual "shield": breathing yellow aura + flash on hit (no texture).
       - Attacks:
@@ -851,7 +851,7 @@ class Coffin(Boss):
 
         # Parry-based HP
         self.parry_hits = 0
-        self.parry_to_kill = 6  # +2 more than before
+        self.parry_to_kill = 4
 
         # Attack scheduler
         self._co_cd = 1.6

@@ -27,18 +27,19 @@ HOMING_MAX_VX = 260
 # Nausea
 NAUSEA_MAX = 160
 NAUSEA_WRONG_EAT = 20
-NAUSEA_DECAY_PER_SEC = 3.0
+NAUSEA_DECAY_PER_SEC = 4.2
 
 # Player
 # Horizontal is snappy; vertical uses a spring toward a target moved by keys
-MOUTH_SPEED = 700      # vertical target speed
+# Make vertical feel less floaty by raising target speed, spring stiffness, and damping
+MOUTH_SPEED = 900      # vertical target speed (was 700)
 MOUTH_SPEED_X = 450    # horizontal direct speed
 MOUTH_SIZE = (40, 40)
 NECK_SWISH_AMPLITUDE = 6
 NECK_SWISH_SPEED = 3.0
-MOUTH_SPRING_K = 64.0  # stronger spring = snappier vertical response
-MOUTH_DAMPING = 18.0   # higher damping = less bounce/overshoot
-MOUTH_MAX_SPEED = 1400 # allow faster catch-up without jitter
+MOUTH_SPRING_K = 110.0  # stronger spring = snappier vertical response (was 64.0)
+MOUTH_DAMPING = 34.0    # higher damping = less bounce/overshoot (was 18.0)
+MOUTH_MAX_SPEED = 1750  # allow faster catch-up without jitter (was 1400)
 MOUTH_BITE_DURATION = 0.12  # how long the mouth shows the bite sprite after eating
 
 # Foods
