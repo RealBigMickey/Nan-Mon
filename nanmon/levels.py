@@ -140,7 +140,7 @@ def get_level(n: int) -> LevelConfig:
             name="Sky",
             bg_images=[_bg("game_bg2.jpg"), _bg("game_bg2.jpg")],
             bg_scroll_speed=55.0,
-            music_path=None,
+            music_path="assets/sounds/level2_backgrounds_sounds.wav",
             food_fall_speed_range=(400, 600),
             food_scale=1.3,
             homing_fraction=min(1.0, HOMING_FRACTION + 0.12),

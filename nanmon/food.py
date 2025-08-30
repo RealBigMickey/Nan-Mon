@@ -59,7 +59,7 @@ FOOD_IMAGE_FILES = {
     "TAINANTOFUICE": "TAINANTOFUICE.png",
 }
 
-def _load_food_image(kind: str) -> pygame.Surface | None:
+def _load_food_image(kind: str, scale: float = 1.0) -> pygame.Surface | None:
     """Try to load and scale the PNG; return None to fall back to geometry."""
     filename = FOOD_IMAGE_FILES.get(kind)
     if not filename:
@@ -71,11 +71,18 @@ def _load_food_image(kind: str) -> pygame.Surface | None:
     if not hasattr(_load_food_image, "_cache"):
         _load_food_image._cache = {}
     cache = _load_food_image._cache  # type: ignore[attr-defined]
-    key = (path, FOOD_SIZE)
+    
+    # Include scale in cache key so scaled versions are cached too
+    base_w, base_h = FOOD_SIZE
+    final_w = max(1, int(base_w * scale))
+    final_h = max(1, int(base_h * scale))
+    key = (path, final_w, final_h)
+    
     if key in cache:
         return cache[key]
+        
     img = pygame.image.load(path).convert_alpha()
-    img = pygame.transform.scale(img, FOOD_SIZE)
+    img = pygame.transform.scale(img, (final_w, final_h))
     cache[key] = img
     return img
 
@@ -104,13 +111,9 @@ class Food(pygame.sprite.Sprite):
         self.hitbox_scale = float(FOOD_HITBOX_SCALE if hitbox_scale is None else hitbox_scale)
 
         # try image first; fallback to geometry
-        image = _load_food_image(kind)
+        image = _load_food_image(kind, scale)
         if image is not None:
-            # Apply optional scale
-            if abs(scale - 1.0) > 1e-3:
-                w, h = image.get_size()
-                sw, sh = max(1, int(w * scale)), max(1, int(h * scale))
-                image = pygame.transform.scale(image, (sw, sh))
+            # Image is already scaled to the correct size from cache
             self.base_image = image
             self.image = self.base_image.copy()
         else:

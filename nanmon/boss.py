@@ -645,6 +645,9 @@ class OrangePork(Boss):
         except Exception:
             # keep whatever base set
             pass
+        # Initialize custom attack state variables
+        self._op_cd = 2.0
+        self._op_phase = None
 
     
 

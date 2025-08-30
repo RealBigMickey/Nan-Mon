@@ -18,21 +18,33 @@ class ScrollingBackground:
     ):
         self.w, self.h = canvas_size
         self.speed_y = float(speed_y)
-        self.images: list[pygame.Surface | None] = []
+        self.image_paths = list(image_paths)
+        self.images: list[pygame.Surface | None] = [None] * len(image_paths)
 
-        for path in image_paths:
-            try:
-                img = pygame.image.load(path).convert_alpha()
-                img = pygame.transform.scale(img, (self.w, self.h))
-                self.images.append(img)
-            except Exception:
-                self.images.append(None)
-
-        if not self.images:
+        if not self.image_paths:
+            self.image_paths = [""]
             self.images = [None]
 
         self.index = 0
         self.offset = 0.0
+
+    def _load_image(self, index: int) -> pygame.Surface | None:
+        """Lazily load an image at the given index."""
+        if self.images[index] is not None:
+            return self.images[index]
+        
+        path = self.image_paths[index]
+        if not path:
+            return None
+            
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            img = pygame.transform.scale(img, (self.w, self.h))
+            self.images[index] = img
+            return img
+        except Exception:
+            self.images[index] = None
+            return None
 
     def update(self, dt: float):
         self.offset += self.speed_y * dt
@@ -41,7 +53,7 @@ class ScrollingBackground:
             self.index = (self.index + 1) % len(self.images)
 
     def draw(self, surface: pygame.Surface, fallback_color: pygame.Color | Tuple[int,int,int]):
-        img = self.images[self.index]
+        img = self._load_image(self.index)
         if img is None:
             surface.fill(fallback_color)
             return
