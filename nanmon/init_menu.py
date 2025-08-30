@@ -165,10 +165,57 @@ class InitMenu:
             self.preview_mouth.update(dt, _Zero())
             self.preview_mouth.rect.center = self._preview_pos
 
-    def handle_event(self, event: pygame.event.Event) -> None:
+    def handle_event(self, event: pygame.event.Event, input_manager=None) -> None:
         if event.type == pygame.QUIT:
             self.running = False
             return
+        
+        # Handle unified input if input_manager is provided
+        if input_manager:
+            input_result = input_manager.handle_event(event)
+            
+            # Handle menu navigation via touch/swipe
+            if input_result['menu_nav']:
+                nav = input_result['menu_nav']
+                if nav == 'up':
+                    self.focus = (self.focus - 1) % 2
+                    self._play(self.menu_sound)
+                elif nav == 'down':
+                    self.focus = (self.focus + 1) % 2
+                    self._play(self.menu_sound)
+                elif nav == 'left':
+                    if self.focus == 0:
+                        prev = self.selected_level
+                        self.selected_level = max(1, self.selected_level - 1)
+                        if self.selected_level != prev:
+                            self._level_flash_t = self._level_flash_dur
+                        self._play(self.menu_sound)
+                    else:
+                        if self.hats:
+                            self.hat_index = (self.hat_index - 1) % len(self.hats)
+                            self.selected_hat = self.hats[self.hat_index]
+                            self._play(self.menu_sound)
+                elif nav == 'right':
+                    if self.focus == 0:
+                        prev = self.selected_level
+                        self.selected_level = min(self.max_level, self.selected_level + 1)
+                        if self.selected_level != prev:
+                            self._level_flash_t = self._level_flash_dur
+                        self._play(self.menu_sound)
+                    else:
+                        if self.hats:
+                            self.hat_index = (self.hat_index + 1) % len(self.hats)
+                            self.selected_hat = self.hats[self.hat_index]
+                            self._play(self.menu_sound)
+            
+            # Handle selection via touch
+            if input_result['select']:
+                self._play(self.menu_sound)
+                self.start_game = True
+                self._fade_out = True
+                self._fade_time = 0.0
+        
+        # Handle keyboard events (PC mode)
         if event.type != pygame.KEYDOWN:
             return
 
@@ -229,8 +276,8 @@ class InitMenu:
         ty = HEIGHT // 2 - 60  # moved down
         surface.blit(title_scaled, (tx, ty))
 
-        # Minimal hint (no ENTER)
-        hint_s = self.font_hint.render("Arrows/WASD to navigate • SPACE start", True, WHITE)
+        # Minimal hint with mobile support
+        hint_s = self.font_hint.render("Arrows/WASD/Swipe to navigate • SPACE/Touch start", True, WHITE)
         surface.blit(hint_s, (WIDTH//2 - hint_s.get_width()//2, ty + title_scaled.get_height() + 6))
 
         # Selector rows
@@ -304,7 +351,7 @@ class InitMenu:
 
 
     # ---------- Main loop ----------
-    def loop(self, screen_or_dm, clock: pygame.time.Clock):
+    def loop(self, screen_or_dm, clock: pygame.time.Clock, input_manager=None):
         try:
             pygame.mixer.stop()
         except Exception:
@@ -312,7 +359,7 @@ class InitMenu:
         while self.running:
             dt = clock.tick(FPS) / 1000.0
             for event in pygame.event.get():
-                self.handle_event(event)
+                self.handle_event(event, input_manager)
             self.update(dt)
 
             if hasattr(screen_or_dm, "get_logical_surface") and hasattr(screen_or_dm, "present"):

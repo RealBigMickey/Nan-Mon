@@ -24,6 +24,7 @@ from .background import ScrollingBackground
 from .constants import ASSET_FOOD_DIR, ASSET_BG_PATH
 #--Teddy add end--
 from .display_manager import DisplayManager
+from .input_manager import InputManager
 from .constants import FONT_PATH
 from .clear_screen import FinishScreen
 from .earth_bg_anim import draw_earth_bg_anim
@@ -52,6 +53,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
         )
     except pygame.error:
         return
+    
+    # Create input manager for mobile/PC unified input
+    input_manager = InputManager(dm)
+    
     clock = pygame.time.Clock()
     font = pygame.font.Font(FONT_PATH, 16)
     # --- Teddy add start---
@@ -63,7 +68,7 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
             image_path_2="nanmon/assets/init_menu_2.jpg",
             anim_fps=2.0,  # 每秒 2 張
         )
-        _menu_res = init_menu.loop(dm, clock)
+        _menu_res = init_menu.loop(dm, clock, input_manager)
         selected_hat = None
         if isinstance(_menu_res, tuple):
             if len(_menu_res) >= 2:
@@ -237,11 +242,34 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 if event.key == pygame.K_F7:
                     # Debug: instantly clear the level to test finish screen
                     level_cleared = True
+            
+            # Handle mobile/unified input events
+            input_result = input_manager.handle_event(event)
+            
+            # Process mobile input actions
+            if input_result['mode_switch'] and not (level_cleared or game_over):
+                mouth.toggle_mode()
+            
+            if input_result['skip']:
+                if game_over:
+                    if menu_sound:
+                        menu_sound.play()
+                    return "RESTART"
+                elif level_cleared:
+                    # proceed to finish screen on touch/space
+                    if page_turn_snd:
+                        try:
+                            page_turn_snd.play()
+                        except Exception:
+                            pass
+                    waiting_clear_space = False
+                    fade_to_finish = True
+                    fade_finish_time = 0.0
 
         keys = pygame.key.get_pressed()
 
         if not (level_cleared or game_over):
-            mouth.update(dt, keys)
+            mouth.update(dt, keys, input_manager)
 
             if nausea > 0:
                 nausea = max(0.0, nausea - NAUSEA_DECAY_PER_SEC * dt)
@@ -578,10 +606,13 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 l2_anim_state['mouth_pos'] = mouth.rect.center  # (x, y)
                 l2_anim_state['dt'] = dt
                 l2_done = draw_level2_clear_anim(frame, l2_anim_state)
-                # 動畫結束後，才允許 SPACE 進到結算畫面
+                # 動畫結束後，才允許 SPACE/Touch 進到結算畫面
                 if l2_done:
                     for event in pygame.event.get():
-                        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                        # Handle mobile/unified input
+                        input_result = input_manager.handle_event(event)
+                        
+                        if (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE) or input_result['skip']:
                             if page_turn_snd:
                                 try:
                                     page_turn_snd.play()
@@ -599,7 +630,10 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 l3_done = draw_level3_clear_anim(frame, l3_anim_state)
                 if l3_done:
                     for event in pygame.event.get():
-                        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                        # Handle mobile/unified input
+                        input_result = input_manager.handle_event(event)
+                        
+                        if (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE) or input_result['skip']:
                             if page_turn_snd:
                                 try:
                                     page_turn_snd.play()
@@ -613,9 +647,12 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
                 earth_anim_state['dt'] = dt
                 earth_anim_done = draw_earth_bg_anim(frame, earth_anim_state)
                 if earth_anim_done:
-                    # ...（保留你原本的 SPACE 進結算流程）
+                    # ...（保留你原本的 SPACE/Touch 進結算流程）
                     for event in pygame.event.get():
-                        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                        # Handle mobile/unified input
+                        input_result = input_manager.handle_event(event)
+                        
+                        if (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE) or input_result['skip']:
                             if page_turn_snd:
                                 try:
                                     page_turn_snd.play()

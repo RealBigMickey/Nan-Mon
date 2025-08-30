@@ -108,7 +108,7 @@ class Mouth(pygame.sprite.Sprite):
             sprites[key] = img
         return sprites
 
-    def update(self, dt: float, keys):
+    def update(self, dt: float, keys=None, input_manager=None):
         if self.dying:
             self.update_dying(dt)
             if self.flash_timer > 0:
@@ -128,12 +128,30 @@ class Mouth(pygame.sprite.Sprite):
             if self.cold_timer <= 0.0:
                 self.cold_speed_scale = 1.0
 
-        # Horizontal: direct control
+        # Movement handling - support both keyboard and mobile input
         pos = pygame.Vector2(self.rect.center)
-        right = 1 if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) else 0
-        left = 1 if (keys[pygame.K_LEFT] or keys[pygame.K_a]) else 0
+        
+        # Get movement input
+        if input_manager:
+            # Use new input manager for unified mobile/PC input
+            move_x, move_y = input_manager.get_movement_input((pos.x, pos.y))
+        else:
+            # Fallback to keyboard input for backward compatibility
+            if keys is None:
+                keys = pygame.key.get_pressed()
+            right = 1 if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) else 0
+            left = 1 if (keys[pygame.K_LEFT] or keys[pygame.K_a]) else 0
+            down = 1 if (keys[pygame.K_DOWN] or keys[pygame.K_s]) else 0
+            up = 1 if (keys[pygame.K_UP] or keys[pygame.K_w]) else 0
+            move_x = right - left
+            move_y = down - up
+
+        # Apply movement scaling factors
         ctrl_scale_x = 0.35 if self.stagger_timer > 0 else 1.0
-        vx = (right - left) * MOUTH_SPEED_X * ctrl_scale_x * self.cold_speed_scale
+        ctrl_scale_y = 0.35 if self.stagger_timer > 0 else 1.0
+        
+        # Horizontal movement
+        vx = move_x * MOUTH_SPEED_X * ctrl_scale_x * self.cold_speed_scale
         if vx < 0:
             self.facing = "LEFT"
         elif vx > 0:
@@ -141,11 +159,10 @@ class Mouth(pygame.sprite.Sprite):
         pos.x += vx * dt
         pos.x = max(self.rect.width//2, min(WIDTH - self.rect.width//2, pos.x))
 
-        # Vertical: spring to target
-        down = 1 if (keys[pygame.K_DOWN] or keys[pygame.K_s]) else 0
-        up = 1 if (keys[pygame.K_UP] or keys[pygame.K_w]) else 0
-        tdy = 0.0 if self.stagger_timer > 0 else (down - up) * MOUTH_SPEED * dt * self.cold_speed_scale
-        self.target.y = max(self.rect.height//2, min(HEIGHT - self.rect.height//2, self.target.y + tdy))
+        # Vertical movement - use spring system for smooth movement
+        target_dy = move_y * MOUTH_SPEED * ctrl_scale_y * self.cold_speed_scale
+        self.target.y += target_dy * dt
+        self.target.y = max(self.rect.height//2, min(HEIGHT - self.rect.height//2, self.target.y))
         self.target.x = pos.x
 
         to_y = self.target.y - pos.y
