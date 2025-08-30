@@ -4,7 +4,7 @@ import random
 import math
 import pygame
 from .constants import (
-    WIDTH, HEIGHT, FPS, RNG_SEED, BG_COLOR, WHITE,
+    WIDTH, HEIGHT, FPS, RNG_SEED, BG_COLOR, WHITE, LETTERBOX_COLOR,
     SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX,
     MAX_ONSCREEN_FOOD, NAUSEA_MAX, NAUSEA_WRONG_EAT, NAUSEA_DECAY_PER_SEC,
     BOSS_SPAWN_TIME, BOSS_HIT_DAMAGE,
@@ -41,11 +41,14 @@ def run_game(headless_seconds: float | None = None, smooth_scale: bool = False, 
     pygame.init()
     # Create DPI-safe, resizable window with logical scaling
     try:
+        # Start with a good default window size in perfect 2:3 aspect ratio
+        initial_window_size = (450, 975)  # Close to 2:3 ratio, scales logical 600x900
         dm = DisplayManager(
             margin=margin,
             use_integer_scale=not smooth_scale,
             caption="道地南蠻 — Salty/Sweet",
-            bg_color=(BG_COLOR.r, BG_COLOR.g, BG_COLOR.b),
+            bg_color=(LETTERBOX_COLOR.r, LETTERBOX_COLOR.g, LETTERBOX_COLOR.b),
+            initial_size=initial_window_size,
         )
     except pygame.error:
         return
